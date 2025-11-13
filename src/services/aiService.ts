@@ -24,7 +24,7 @@ export class AIService {
     console.log(`🤖 [DEBUG] Generating ${count} AI profiles with demographics:`, demographics);
     
     const profiles: ConsumerProfile[] = [];
-    const batchSize = 10; // Generate profiles in smaller batches to avoid token limits
+    const batchSize = 10; // Reduced batch size to prevent token limit issues with larger profile counts
     let conversationHistory: Array<{role: 'system' | 'user' | 'assistant', content: string}> = [];
     
     // Process in batches
@@ -101,10 +101,9 @@ export class AIService {
 
       try {
         const response = await openai.chat.completions.create({
-          model: 'gpt-4o',
+          model: 'gpt-4o-mini',
           messages: conversationHistory,
-          temperature: 0.8,
-          max_tokens: 3000, // Reduced token limit for smaller batches
+          max_completion_tokens: 6000
         });
 
         const content = response.choices[0]?.message?.content;
@@ -170,7 +169,6 @@ export class AIService {
     
     const analyses: PreferenceAnalysis[] = [];
     const startTime = Date.now();
-    const TIMEOUT_THRESHOLD = 60000; // 60 seconds - stop well before hitting gateway timeout
     
     // Available models to rotate through - including corrected Claude model name for myGenAssist
     const models = ['grok-3', 'gpt-4o-mini', 'gpt-5-nano', 'claude-sonnet-4'];
@@ -179,13 +177,6 @@ export class AIService {
     const batchSize = 5; // Increased to 5 to reduce total processing time further
     
     for (let i = 0; i < profiles.length; i += batchSize) {
-      // Check if we're approaching the timeout limit
-      const elapsed = Date.now() - startTime;
-      if (elapsed > TIMEOUT_THRESHOLD) {
-        console.warn(`⏰ [DEBUG] Approaching timeout limit (${elapsed}ms), stopping analysis with ${analyses.length} completed analyses`);
-        break;
-      }
-      
       const batch = profiles.slice(i, i + batchSize);
       
       for (const concept of concepts) {

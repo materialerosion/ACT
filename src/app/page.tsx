@@ -26,19 +26,46 @@ export default function Home() {
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingMessage, setLoadingMessage] = useState('');
 
+  const pollJobStatus = async (jobId: string): Promise<ConsumerProfile[]> => {
+    const maxAttempts = 120; // Poll for up to 10 minutes (120 * 5 seconds)
+    const pollIntervalMs = 5000; // Poll every 5 seconds
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+      try {
+        const response = await fetch(`/api/profiles/generate?jobId=${jobId}`);
+        const data = await response.json();
+
+        if (data.status === 'completed') {
+          console.log('✅ [DEBUG] Job completed successfully');
+          return data.profiles;
+        } else if (data.status === 'failed') {
+          throw new Error(data.error || 'Profile generation failed');
+        }
+
+        // Still processing, update progress
+        const estimatedProgress = Math.min(90, 10 + (attempts / maxAttempts) * 80);
+        setLoadingProgress(estimatedProgress);
+        
+        console.log(`🔄 [DEBUG] Polling attempt ${attempts + 1}/${maxAttempts} - Status: processing`);
+        
+        // Wait before next poll
+        await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+        attempts++;
+      } catch (error) {
+        console.error('Error polling job status:', error);
+        throw error;
+      }
+    }
+
+    throw new Error('Profile generation timed out after 10 minutes. Please try again with fewer profiles.');
+  };
+
   const handleDemographicsSubmit = async (demographicData: DemographicInput) => {
     setIsLoading(true);
     setLoadingProgress(0);
     setLoadingMessage('Recruiting Consumer Profiles');
     setDemographics(demographicData);
-
-    // Simulate progress updates
-    const progressInterval = setInterval(() => {
-      setLoadingProgress(prev => {
-        if (prev >= 90) return prev; // Don't complete until actual response
-        return prev + Math.random() * 15;
-      });
-    }, 1000);
 
     try {
       console.log('🚀 [DEBUG] Sending request to /api/profiles/generate', {
@@ -46,6 +73,7 @@ export default function Home() {
         count: demographicData.consumerCount,
       });
 
+      // Start the job
       const response = await fetch('/api/profiles/generate', {
         method: 'POST',
         headers: {
@@ -62,8 +90,6 @@ export default function Home() {
         statusText: response.statusText,
         ok: response.ok
       });
-
-      clearInterval(progressInterval);
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -72,21 +98,28 @@ export default function Home() {
           statusText: response.statusText,
           errorData
         });
-        throw new Error(`Failed to recruit profiles: ${response.status} ${response.statusText}`);
+        throw new Error(`Failed to start profile generation: ${response.status} ${response.statusText}`);
       }
+
+      const data = await response.json();
+      const jobId = data.jobId;
+
+      console.log(`🔄 [DEBUG] Job started with ID: ${jobId}, polling for completion...`);
+      setLoadingMessage('Generating profiles in background... This may take a few minutes.');
+
+      // Poll for job completion
+      const profiles = await pollJobStatus(jobId);
 
       setLoadingProgress(100);
       setLoadingMessage('Recruitment Complete');
       
-      const data = await response.json();
-      setProfiles(data.profiles);
+      setProfiles(profiles);
       
       // Small delay to show completion
       setTimeout(() => {
         setCurrentStep('review');
       }, 500);
     } catch (error) {
-      clearInterval(progressInterval);
       console.error('Error recruiting profiles:', error);
       alert('Failed to recruit consumer profiles. Please try again.');
     } finally {
@@ -98,6 +131,41 @@ export default function Home() {
     }
   };
 
+  const pollAnalysisStatus = async (jobId: string): Promise<{ analyses: any[], summary: any }> => {
+    const maxAttempts = 120; // Poll for up to 10 minutes (120 * 5 seconds)
+    const pollIntervalMs = 5000; // Poll every 5 seconds
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+      try {
+        const response = await fetch(`/api/analyze?jobId=${jobId}`);
+        const data = await response.json();
+
+        if (data.status === 'completed') {
+          console.log('✅ [DEBUG] Analysis job completed successfully');
+          return { analyses: data.analyses, summary: data.summary };
+        } else if (data.status === 'failed') {
+          throw new Error(data.error || 'Analysis failed');
+        }
+
+        // Still processing, update progress
+        const estimatedProgress = Math.min(90, 10 + (attempts / maxAttempts) * 80);
+        setLoadingProgress(estimatedProgress);
+        
+        console.log(`🔄 [DEBUG] Polling analysis attempt ${attempts + 1}/${maxAttempts} - Status: processing`);
+        
+        // Wait before next poll
+        await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+        attempts++;
+      } catch (error) {
+        console.error('Error polling analysis status:', error);
+        throw error;
+      }
+    }
+
+    throw new Error('Analysis timed out after 10 minutes. Please try again with fewer profiles or concepts.');
+  };
+
   const handleConceptsSubmit = async (conceptsData: Concept[]) => {
     setIsLoading(true);
     setLoadingProgress(0);
@@ -105,19 +173,10 @@ export default function Home() {
     setConcepts(conceptsData);
     setCurrentStep('analysis');
 
-    // Simulate progress updates
-    const progressInterval = setInterval(() => {
-      setLoadingProgress(prev => {
-        if (prev >= 90) return prev;
-        return prev + Math.random() * 10;
-      });
-    }, 1500);
-
     try {
-      // Create an AbortController for timeout handling
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), ANALYSIS_TIMEOUT_SECONDS * 1000); // Convert seconds to milliseconds
+      console.log('🚀 [DEBUG] Sending request to /api/analyze');
 
+      // Start the analysis job
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: {
@@ -127,28 +186,36 @@ export default function Home() {
           profiles,
           concepts: conceptsData,
         }),
-        signal: controller.signal,
       });
 
-      clearTimeout(timeoutId);
-      clearInterval(progressInterval);
+      console.log('📡 [DEBUG] API Response received:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok
+      });
       
       if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Unknown error');
-        
-        // Special handling for 504 Gateway Timeout
-        if (response.status === 504) {
-          throw new Error(`Gateway timeout: The analysis may have completed on the server but the response was lost. Please try again with fewer profiles or concepts to reduce processing time.`);
-        }
-        
-        throw new Error(`Failed to analyze preferences: ${response.status} ${response.statusText} - ${errorText}`);
+        const errorData = await response.json().catch(() => ({}));
+        console.error('API Response Error:', {
+          status: response.status,
+          statusText: response.statusText,
+          errorData
+        });
+        throw new Error(`Failed to start analysis: ${response.status} ${response.statusText}`);
       }
+
+      const data = await response.json();
+      const jobId = data.jobId;
+
+      console.log(`🔄 [DEBUG] Analysis job started with ID: ${jobId}, polling for completion...`);
+      setLoadingMessage('Analyzing preferences in background... This may take a few minutes.');
+
+      // Poll for job completion
+      const result = await pollAnalysisStatus(jobId);
 
       setLoadingProgress(100);
       setLoadingMessage('Analysis Complete');
 
-      const data = await response.json();
-      
       // Create the complete analysis report
       const report: AnalysisReport = {
         id: uuidv4(),
@@ -156,8 +223,8 @@ export default function Home() {
         demographics: demographics!,
         concepts: conceptsData,
         profiles,
-        analyses: data.analyses,
-        summary: data.summary,
+        analyses: result.analyses,
+        summary: result.summary,
       };
 
       setAnalysisReport(report);
@@ -166,15 +233,10 @@ export default function Home() {
         setCurrentStep('results');
       }, 500);
     } catch (error) {
-      clearInterval(progressInterval);
       console.error('Error analyzing preferences:', error);
       
       if (error instanceof Error) {
-        if (error.name === 'AbortError') {
-          alert(`Analysis timed out after ${ANALYSIS_TIMEOUT_SECONDS} seconds. The server may still be processing - please try again with fewer profiles or concepts.`);
-        } else {
-          alert(`Failed to analyze consumer preferences: ${error.message}. Please try again.`);
-        }
+        alert(`Failed to analyze consumer preferences: ${error.message}. Please try again.`);
       } else {
         alert('Failed to analyze consumer preferences. Please try again.');
       }
