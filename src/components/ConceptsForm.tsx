@@ -73,7 +73,7 @@ export default function ConceptsForm({ onSubmit, isLoading }: ConceptsFormProps)
     },
   ];
 
-  const useSampleConcept = (sampleConcept: { title: string; description: string }) => {
+  const handleUseSampleConcept = (sampleConcept: { title: string; description: string }) => {
     const emptyConcept = concepts.find(concept => !concept.title && !concept.description);
     if (emptyConcept) {
       updateConcept(emptyConcept.id, 'title', sampleConcept.title);
@@ -106,7 +106,7 @@ export default function ConceptsForm({ onSubmit, isLoading }: ConceptsFormProps)
           {sampleConcepts.map((sample, index) => (
             <button
               key={index}
-              onClick={() => useSampleConcept(sample)}
+              onClick={() => handleUseSampleConcept(sample)}
               className="text-left p-3 bg-white rounded border border-blue-200 hover:border-blue-400 transition-colors"
             >
               <div className="font-medium text-blue-800">{sample.title}</div>
