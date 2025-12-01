@@ -23,7 +23,15 @@ jobs:
         with:
           node-version: '24.x'
 
+      - name: Create .env file
+        run: |
+          echo "BAYER_API_URL=${{ secrets.BAYER_API_URL }}" >> .env.local
+          echo "BAYER_API_KEY=${{ secrets.BAYER_API_KEY }}" >> .env.local
+
       - name: npm install, build, and test
+        env:
+          BAYER_API_URL: ${{ secrets.BAYER_API_URL }}
+          BAYER_API_KEY: ${{ secrets.BAYER_API_KEY }}
         run: |
           npm install
           npm run build --if-present
