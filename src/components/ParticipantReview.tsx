@@ -689,9 +689,30 @@ export default function ParticipantReview({
                         {profile.income} • {profile.education}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-700 mb-1">{profile.lifestyle}</p>
+                    <p className="text-sm text-gray-700 mb-2">{profile.lifestyle}</p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
+                      <div className="text-xs">
+                        <span className="font-semibold text-gray-600">Tech:</span>
+                        <span className="text-gray-700 ml-1">{profile.techSavviness}</span>
+                      </div>
+                      <div className="text-xs">
+                        <span className="font-semibold text-gray-600">Environmental:</span>
+                        <span className="text-gray-700 ml-1">{profile.environmentalAwareness}</span>
+                      </div>
+                      <div className="text-xs">
+                        <span className="font-semibold text-gray-600">Brand Loyalty:</span>
+                        <span className="text-gray-700 ml-1">{profile.brandLoyalty}</span>
+                      </div>
+                      <div className="text-xs">
+                        <span className="font-semibold text-gray-600">Price Sensitivity:</span>
+                        <span className="text-gray-700 ml-1">{profile.pricesensitivity}</span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-500 mb-1">
+                      <span className="font-semibold">Shopping:</span> {profile.shoppingBehavior}
+                    </p>
                     <p className="text-xs text-gray-500">
-                      Interests: {profile.interests.join(', ')}
+                      <span className="font-semibold">Interests:</span> {profile.interests.join(', ')}
                     </p>
                   </div>
                   <div className="flex space-x-2">

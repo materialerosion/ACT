@@ -1,10 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Extend API route timeout for long-running AI analysis
-  experimental: {
-    serverComponentsExternalPackages: ['openai'],
-  },
+  // Configure external packages
+  serverExternalPackages: ['openai'],
   // Configure headers for longer timeouts
   async headers() {
     return [

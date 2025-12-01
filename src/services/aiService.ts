@@ -27,6 +27,18 @@ export class AIService {
     const batchSize = 10; // Reduced batch size to prevent token limit issues with larger profile counts
     let conversationHistory: Array<{role: 'system' | 'user' | 'assistant', content: string}> = [];
     
+    // Build additional context string
+    let additionalContextString = '';
+    if (demographics.additionalContext) {
+      additionalContextString += `\n\nADDITIONAL CONTEXT:\n${demographics.additionalContext}`;
+    }
+    if (demographics.uploadedFiles && demographics.uploadedFiles.length > 0) {
+      additionalContextString += '\n\nUPLOADED RESEARCH DOCUMENTS:\n';
+      demographics.uploadedFiles.forEach(file => {
+        additionalContextString += `\n--- ${file.name} ---\n${file.content.substring(0, 2000)}\n`; // Limit content length
+      });
+    }
+    
     // Process in batches
     for (let i = 0; i < count; i += batchSize) {
       const currentBatchSize = Math.min(batchSize, count - i);
@@ -37,13 +49,21 @@ export class AIService {
       if (isFirstBatch) {
         // First batch: Full instructions
         // add psychographic information such as how many times they have bought a product in the last 6 months
+        const ageRange = demographics.ageMin && demographics.ageMax 
+          ? `${demographics.ageMin}-${demographics.ageMax}` 
+          : demographics.ageRanges.join(', ');
+        const incomeRange = demographics.incomeMin !== undefined && demographics.incomeMax !== undefined
+          ? `$${demographics.incomeMin.toLocaleString()} - $${demographics.incomeMax.toLocaleString()}`
+          : demographics.incomeRanges.join(', ');
+        
         prompt = `Generate exactly ${currentBatchSize} diverse consumer profiles based on the following demographics:
         
-        Age Ranges: ${demographics.ageRanges.join(', ')}
+        Age Range: ${ageRange}
         Genders: ${demographics.genders.join(', ')}
         Locations: ${demographics.locations.join(', ')}
-        Income Ranges: ${demographics.incomeRanges.join(', ')}
+        Income Range: ${incomeRange}
         Education Levels: ${demographics.educationLevels.join(', ')}
+        ${additionalContextString}
         
         For each profile, provide realistic and diverse characteristics including:
         - Unique lifestyle descriptions including family situation, occupation, daily habits

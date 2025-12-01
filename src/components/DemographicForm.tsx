@@ -2,8 +2,9 @@
 
 import React, { useState } from 'react';
 import { DemographicInput } from '@/types';
-import { Users, MapPin, DollarSign, GraduationCap, Calendar, Target } from 'lucide-react';
+import { Users, MapPin, DollarSign, GraduationCap, Calendar, Target, Upload, FileText, ChevronDown, ChevronUp } from 'lucide-react';
 import LoadingBar from './LoadingBar';
+import DualRangeSlider from './DualRangeSlider';
 
 interface DemographicFormProps {
   onSubmit: (demographics: DemographicInput) => void;
@@ -13,10 +14,6 @@ interface DemographicFormProps {
 }
 
 export default function DemographicForm({ onSubmit, isLoading, loadingProgress = 0, loadingMessage }: DemographicFormProps) {
-  const ageRanges = [
-    '18-24', '25-34', '35-44', '45-54', '55-64', '65+'
-  ];
-
   const genderOptions = [
     'Male', 'Female', 'Non-binary', 'Prefer not to say'
   ];
@@ -25,26 +22,33 @@ export default function DemographicForm({ onSubmit, isLoading, loadingProgress =
     'Urban', 'Suburban', 'Rural', 'Metropolitan', 'Small Town'
   ];
 
-  const incomeOptions = [
-    'Under $25,000', '$25,000-$50,000', '$50,000-$75,000', 
-    '$75,000-$100,000', '$100,000-$150,000', 'Over $150,000'
-  ];
-
   const educationOptions = [
     'High School', 'Some College', 'Bachelor\'s Degree', 
     'Master\'s Degree', 'PhD/Professional Degree'
   ];
 
   const [demographics, setDemographics] = useState<DemographicInput>({
-    ageRanges: [...ageRanges], // All age ranges selected by default
-    genders: [...genderOptions], // All genders selected by default
-    locations: [...locationOptions], // All locations selected by default
-    incomeRanges: [...incomeOptions], // All income ranges selected by default
-    educationLevels: [...educationOptions], // All education levels selected by default
+    ageRanges: [],
+    genders: [...genderOptions],
+    locations: [...locationOptions],
+    incomeRanges: [],
+    educationLevels: [...educationOptions],
     consumerCount: 100,
+    ageMin: 17,
+    ageMax: 65,
+    incomeMin: 24000,
+    incomeMax: 151000,
+    additionalContext: '',
+    uploadedFiles: []
   });
 
-  const handleCheckboxChange = (field: keyof Omit<DemographicInput, 'consumerCount'>, value: string) => {
+  const [showAdditionalContext, setShowAdditionalContext] = useState(false);
+  const [ageMinInput, setAgeMinInput] = useState('17');
+  const [ageMaxInput, setAgeMaxInput] = useState('65');
+  const [incomeMinInput, setIncomeMinInput] = useState('24000');
+  const [incomeMaxInput, setIncomeMaxInput] = useState('151000');
+
+  const handleCheckboxChange = (field: keyof Omit<DemographicInput, 'consumerCount' | 'ageMin' | 'ageMax' | 'incomeMin' | 'incomeMax' | 'additionalContext' | 'uploadedFiles'>, value: string) => {
     setDemographics(prev => ({
       ...prev,
       [field]: (prev[field] as string[]).includes(value)
@@ -58,6 +62,77 @@ export default function DemographicForm({ onSubmit, isLoading, loadingProgress =
       ...prev,
       consumerCount: count
     }));
+  };
+
+  const handleAgeMinChange = (value: number) => {
+    const clampedValue = Math.max(17, Math.min(value, demographics.ageMax! - 1));
+    setAgeMinInput(clampedValue.toString());
+    setDemographics(prev => ({
+      ...prev,
+      ageMin: clampedValue
+    }));
+  };
+
+  const handleAgeMaxChange = (value: number) => {
+    const clampedValue = Math.min(65, Math.max(value, demographics.ageMin! + 1));
+    setAgeMaxInput(clampedValue.toString());
+    setDemographics(prev => ({
+      ...prev,
+      ageMax: clampedValue
+    }));
+  };
+
+  const handleIncomeMinChange = (value: number) => {
+    const clampedValue = Math.max(24000, Math.min(value, demographics.incomeMax! - 1000));
+    setIncomeMinInput(clampedValue.toString());
+    setDemographics(prev => ({
+      ...prev,
+      incomeMin: clampedValue
+    }));
+  };
+
+  const handleIncomeMaxChange = (value: number) => {
+    const clampedValue = Math.min(151000, Math.max(value, demographics.incomeMin! + 1000));
+    setIncomeMaxInput(clampedValue.toString());
+    setDemographics(prev => ({
+      ...prev,
+      incomeMax: clampedValue
+    }));
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    const uploadedFiles = await Promise.all(
+      Array.from(files).map(async (file) => {
+        const content = await file.text();
+        return {
+          name: file.name,
+          content: content,
+          type: file.type
+        };
+      })
+    );
+
+    setDemographics(prev => ({
+      ...prev,
+      uploadedFiles: [...(prev.uploadedFiles || []), ...uploadedFiles]
+    }));
+  };
+
+  const removeFile = (index: number) => {
+    setDemographics(prev => ({
+      ...prev,
+      uploadedFiles: prev.uploadedFiles?.filter((_, i) => i !== index)
+    }));
+  };
+
+  const formatCurrency = (value: number): string => {
+    if (value >= 1000) {
+      return `$${(value / 1000).toFixed(0)}k`;
+    }
+    return `$${value}`;
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -75,24 +150,143 @@ export default function DemographicForm({ onSubmit, isLoading, loadingProgress =
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Age Ranges */}
+        {/* Age Range Slider */}
         <div className="bg-gray-50 p-4 rounded-lg">
           <div className="flex items-center mb-3">
             <Calendar className="w-5 h-5 text-blue-600 mr-2" />
-            <h3 className="text-lg font-semibold text-gray-800">Age Ranges</h3>
+            <h3 className="text-lg font-semibold text-gray-800">Age Range</h3>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {ageRanges.map(range => (
-              <label key={range} className="flex items-center space-x-2 cursor-pointer">
+          <DualRangeSlider
+            min={17}
+            max={65}
+            step={1}
+            minValue={demographics.ageMin!}
+            maxValue={demographics.ageMax!}
+            onChange={(min, max) => {
+              setAgeMinInput(min.toString());
+              setAgeMaxInput(max.toString());
+              setDemographics(prev => ({
+                ...prev,
+                ageMin: min,
+                ageMax: max
+              }));
+            }}
+            formatLabel={(value) => `${value} years`}
+            color="#3B82F6"
+            minBoundLabel="(includes <18)"
+            maxBoundLabel="(includes 65+)"
+          />
+          <div className="flex items-center justify-between space-x-4 mt-4">
+            <div className="flex items-center space-x-2">
+              <label className="text-sm font-medium text-gray-700">Min Age:</label>
+              <input
+                type="number"
+                min="17"
+                max="65"
+                value={ageMinInput}
+                onChange={(e) => {
+                  setAgeMinInput(e.target.value);
+                  const value = parseInt(e.target.value);
+                  if (!isNaN(value)) {
+                    handleAgeMinChange(value);
+                  }
+                }}
+                onBlur={() => setAgeMinInput(demographics.ageMin!.toString())}
+                className="w-20 p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-center text-gray-900"
+              />
+            </div>
+            <div className="flex items-center space-x-2">
+              <label className="text-sm font-medium text-gray-700">Max Age:</label>
+              <input
+                type="number"
+                min="17"
+                max="65"
+                value={ageMaxInput}
+                onChange={(e) => {
+                  setAgeMaxInput(e.target.value);
+                  const value = parseInt(e.target.value);
+                  if (!isNaN(value)) {
+                    handleAgeMaxChange(value);
+                  }
+                }}
+                onBlur={() => setAgeMaxInput(demographics.ageMax!.toString())}
+                className="w-20 p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-center text-gray-900"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Income Range Slider */}
+        <div className="bg-gray-50 p-4 rounded-lg">
+          <div className="flex items-center mb-3">
+            <DollarSign className="w-5 h-5 text-yellow-600 mr-2" />
+            <h3 className="text-lg font-semibold text-gray-800">Income Range</h3>
+          </div>
+          <DualRangeSlider
+            min={24000}
+            max={151000}
+            step={1000}
+            minValue={demographics.incomeMin!}
+            maxValue={demographics.incomeMax!}
+            onChange={(min, max) => {
+              setIncomeMinInput(min.toString());
+              setIncomeMaxInput(max.toString());
+              setDemographics(prev => ({
+                ...prev,
+                incomeMin: min,
+                incomeMax: max
+              }));
+            }}
+            formatLabel={(value) => formatCurrency(value)}
+            color="#CA8A04"
+            minBoundLabel="(includes <$25k)"
+            maxBoundLabel="(includes >$150k)"
+          />
+          <div className="flex items-center justify-between space-x-4 mt-4">
+            <div className="flex items-center space-x-2">
+              <label className="text-sm font-medium text-gray-700">Min Income:</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
                 <input
-                  type="checkbox"
-                  checked={demographics.ageRanges.includes(range)}
-                  onChange={() => handleCheckboxChange('ageRanges', range)}
-                  className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                  type="number"
+                  min="24000"
+                  max="151000"
+                  step="1000"
+                  value={incomeMinInput}
+                  onChange={(e) => {
+                    setIncomeMinInput(e.target.value);
+                    const value = parseInt(e.target.value);
+                    if (!isNaN(value)) {
+                      handleIncomeMinChange(value);
+                    }
+                  }}
+                  onBlur={() => setIncomeMinInput(demographics.incomeMin!.toString())}
+                  className="w-32 pl-6 pr-2 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-transparent text-gray-900"
                 />
-                <span className="text-sm text-gray-700">{range}</span>
-              </label>
-            ))}
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <label className="text-sm font-medium text-gray-700">Max Income:</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                <input
+                  type="number"
+                  min="24000"
+                  max="151000"
+                  step="1000"
+                  value={incomeMaxInput}
+                  onChange={(e) => {
+                    setIncomeMaxInput(e.target.value);
+                    const value = parseInt(e.target.value);
+                    if (!isNaN(value)) {
+                      handleIncomeMaxChange(value);
+                    }
+                  }}
+                  onBlur={() => setIncomeMaxInput(demographics.incomeMax!.toString())}
+                  className="w-32 pl-6 pr-2 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-transparent text-gray-900"
+                />
+              </div>
+            </div>
           </div>
         </div>
 
@@ -169,27 +363,6 @@ export default function DemographicForm({ onSubmit, isLoading, loadingProgress =
           </div>
         </div>
 
-        {/* Income */}
-        <div className="bg-gray-50 p-4 rounded-lg">
-          <div className="flex items-center mb-3">
-            <DollarSign className="w-5 h-5 text-yellow-600 mr-2" />
-            <h3 className="text-lg font-semibold text-gray-800">Income Range</h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {incomeOptions.map(income => (
-              <label key={income} className="flex items-center space-x-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={demographics.incomeRanges.includes(income)}
-                  onChange={() => handleCheckboxChange('incomeRanges', income)}
-                  className="w-4 h-4 text-yellow-600 bg-gray-100 border-gray-300 rounded focus:ring-yellow-500"
-                />
-                <span className="text-sm text-gray-700">{income}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-
         {/* Education */}
         <div className="bg-gray-50 p-4 rounded-lg">
           <div className="flex items-center mb-3">
@@ -209,6 +382,82 @@ export default function DemographicForm({ onSubmit, isLoading, loadingProgress =
               </label>
             ))}
           </div>
+        </div>
+
+        {/* Additional Context Section */}
+        <div className="bg-gray-50 p-4 rounded-lg border-2 border-dashed border-gray-300">
+          <button
+            type="button"
+            onClick={() => setShowAdditionalContext(!showAdditionalContext)}
+            className="flex items-center justify-between w-full"
+          >
+            <div className="flex items-center">
+              <FileText className="w-5 h-5 text-indigo-600 mr-2" />
+              <h3 className="text-lg font-semibold text-gray-800">Additional Context (Optional)</h3>
+            </div>
+            {showAdditionalContext ? <ChevronUp className="w-5 h-5 text-gray-600" /> : <ChevronDown className="w-5 h-5 text-gray-600" />}
+          </button>
+          
+          {showAdditionalContext && (
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Upload Research Documents
+                </label>
+                <p className="text-xs text-gray-500 mb-2">
+                  Upload user research, surveys, interviews, or other relevant documents to provide additional context for profile generation.
+                </p>
+                <div className="flex items-center space-x-2">
+                  <label className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 transition-colors">
+                    <Upload className="w-4 h-4 mr-2 text-indigo-600" />
+                    <span className="text-sm text-gray-700">Choose Files</span>
+                    <input
+                      type="file"
+                      multiple
+                      accept=".txt,.pdf,.doc,.docx,.csv"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+                {demographics.uploadedFiles && demographics.uploadedFiles.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {demographics.uploadedFiles.map((file, index) => (
+                      <div key={index} className="flex items-center justify-between p-2 bg-white rounded border border-gray-200">
+                        <div className="flex items-center space-x-2">
+                          <FileText className="w-4 h-4 text-indigo-600" />
+                          <span className="text-sm text-gray-700">{file.name}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeFile(index)}
+                          className="text-red-600 hover:text-red-800 text-sm"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Additional Context / User Research Notes
+                </label>
+                <p className="text-xs text-gray-500 mb-2">
+                  Provide any additional context, user research findings, behavioral insights, or specific requirements to guide the AI in generating more accurate personas.
+                </p>
+                <textarea
+                  value={demographics.additionalContext}
+                  onChange={(e) => setDemographics(prev => ({ ...prev, additionalContext: e.target.value }))}
+                  className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900"
+                  rows={6}
+                  placeholder="Example: Our research shows that users in this demographic prefer sustainable products and are willing to pay premium prices. They are active on social media and influenced by peer reviews..."
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Loading Bar */}

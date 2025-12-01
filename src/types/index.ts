@@ -37,6 +37,12 @@ export interface DemographicInput {
   incomeRanges: string[];
   educationLevels: string[];
   consumerCount: number;
+  ageMin?: number;
+  ageMax?: number;
+  incomeMin?: number;
+  incomeMax?: number;
+  additionalContext?: string;
+  uploadedFiles?: Array<{name: string; content: string; type: string}>;
 }
 
 export interface AnalysisReport {
