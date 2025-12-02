@@ -1,17 +1,13 @@
 #!/bin/bash
 
 # Azure Web App startup script for Next.js
-# This script ensures dependencies are installed before starting the app
+# Build is already done in GitHub Actions, so we only need to install production dependencies and start
 
 echo "Starting deployment process..."
 
-# Install production dependencies
-echo "Installing dependencies..."
+# Install production dependencies only (build artifacts already exist)
+echo "Installing production dependencies..."
 npm ci --omit=dev
-
-# Build the Next.js application
-echo "Building Next.js application..."
-npm run build
 
 # Start the Next.js server
 echo "Starting Next.js server..."
