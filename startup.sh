@@ -1,13 +1,9 @@
 #!/bin/bash
 
 # Azure Web App startup script for Next.js
+# All dependencies and build artifacts are included in deployment
+
 echo "Starting Next.js application..."
 
-# Set PORT if not already set
-export PORT=${PORT:-8080}
-
-# Ensure we're in the correct directory
-cd /home/site/wwwroot
-
-# Start the Next.js server
+# Start the Next.js server (PORT is automatically set by Azure)
 npm start
