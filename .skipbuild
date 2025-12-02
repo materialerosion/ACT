@@ -1,0 +1,2 @@
+# This file tells Azure to skip all build processing
+# The application is pre-built in GitHub Actions
