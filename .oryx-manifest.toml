@@ -1,0 +1,15 @@
+# Oryx build manifest
+# This tells Azure how to build the Next.js application
+
+[build]
+# Use npm for package management
+packageManager = "npm"
+
+# Run build during deployment
+runBuild = true
+
+# Build command
+buildCommand = "npm run build"
+
+# Compress node_modules for faster deployment
+compressDestinationDir = true
