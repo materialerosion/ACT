@@ -37,10 +37,8 @@ jobs:
           npm run build --if-present
           npm run test --if-present
 
-      - name: Install production dependencies only
-        run: |
-          rm -rf node_modules
-          npm ci --omit=dev
+      - name: Prune dev dependencies
+        run: npm prune --production
 
       - name: Zip artifact for deployment
         run: zip -r release.zip . -x "*.git*"
