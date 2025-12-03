@@ -56,14 +56,11 @@ jobs:
         with:
           name: node-app
       
-      - name: Unzip artifact for deployment
-        run: unzip release.zip
-      
       - name: 'Deploy to Azure Web App'
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'pulse-b'
           slot-name: 'Production'
-          package: .
+          package: release.zip
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_9D49018DA69940AEA01C07D67EF14665 }}
