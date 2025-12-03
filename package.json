@@ -4,7 +4,6 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "prebuild": "tar -xzvf node_modules.tar.gz",
     "build": "next build",
     "start": "next start -p ${PORT:-3000}",
     "lint": "eslint"
