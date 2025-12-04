@@ -137,7 +137,19 @@ export default function DemographicForm({ onSubmit, isLoading, loadingProgress =
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(demographics);
+    const submissionData = { ...demographics };
+
+    // Ensure genders is not empty
+    if (submissionData.genders.length === 0) {
+      submissionData.genders = [...genderOptions];
+    }
+
+    // Ensure ageRanges is populated
+    if (submissionData.ageMin && submissionData.ageMax) {
+      submissionData.ageRanges = [`${submissionData.ageMin}-${submissionData.ageMax}`];
+    }
+    
+    onSubmit(submissionData);
   };
 
   return (

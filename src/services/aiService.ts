@@ -1,9 +1,12 @@
 import OpenAI from 'openai';
 import { ConsumerProfile, DemographicInput, PreferenceAnalysis, Concept } from '@/types';
+import getConfig from 'next/config';
+
+const { serverRuntimeConfig } = getConfig();
 
 const openai = new OpenAI({
-  baseURL: process.env.BAYER_API_URL,
-  apiKey: process.env.BAYER_API_KEY,
+  baseURL: serverRuntimeConfig.bayerApiUrl,
+  apiKey: serverRuntimeConfig.bayerApiKey,
 });
 
 export class AIService {
