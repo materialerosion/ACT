@@ -1,9 +1,8 @@
 #!/bin/bash
 
 # Azure Web App startup script for Next.js
-# All dependencies and build artifacts are included in deployment
+echo "Starting Next.js standalone application..."
 
-echo "Starting Next.js application..."
-
-# Start the Next.js server (PORT is automatically set by Azure)
-npm start
+# The PORT environment variable is automatically set by Azure App Service.
+# The Next.js standalone server will automatically use it.
+exec node .next/standalone/server.js
