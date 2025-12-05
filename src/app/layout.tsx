@@ -8,8 +8,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Consumer Profile Analyzer - AI-Powered Market Research",
-  description: "Generate consumer profiles and analyze preferences using advanced AI technology. Get insights on product concepts, market positioning, and consumer behavior.",
+  title: "PULSE - Personas Used in Lifelike Synthetic Experiences",
+  description: "Generate synthetic consumer personas and analyze preferences using advanced AI technology. Get insights on product concepts, market positioning, and consumer behavior.",
 };
 
 export default function RootLayout({

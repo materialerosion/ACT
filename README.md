@@ -1,6 +1,19 @@
-# Consumer Profile Analyzer
+# PULSE - Personas Used in Lifelike Synthetic Experiences
 
-A comprehensive web application that generates consumer profiles using AI and analyzes their preferences against product concepts. Built with Next.js, TypeScript, and integrated with Bayer's AI API.
+A comprehensive web application that generates synthetic consumer personas using AI and analyzes their preferences against product concepts. Built with Next.js, TypeScript, and integrated with Bayer's AI API.
+
+## Table of Contents
+
+- [Features](#features)
+- [Technology Stack](#technology-stack)
+- [Getting Started](#getting-started)
+- [Usage Guide](#usage-guide)
+- [API Integration](#api-integration)
+- [Project Structure](#project-structure)
+- [Building and Deployment](#building-and-deployment)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [Support](#support)
 
 ## Features
 
@@ -9,7 +22,7 @@ A comprehensive web application that generates consumer profiles using AI and an
 - Customizable demographics: age, gender, location, income, education
 - Realistic and varied profile characteristics including lifestyle, interests, and behaviors
 
-### 📊 Preference Analysis  
+### 📊 Preference Analysis
 - Test product concepts against generated consumer profiles
 - Analyze preferences, innovativeness, and differentiation scores (1-10 scale)
 - AI-generated reasoning for each consumer's response
@@ -39,29 +52,34 @@ A comprehensive web application that generates consumer profiles using AI and an
 
 ### Prerequisites
 
-- Node.js 18+ 
+- Node.js 18+
 - npm or yarn package manager
 
 ### Installation
 
-1. Navigate to the project directory:
+1. Clone the repository:
 ```bash
-cd consumer-profile-analyzer
+git clone https://github.com/materialerosion/ACT.git
 ```
 
-2. Install dependencies:
+2. Navigate to the project directory:
+```bash
+cd ACT
+```
+
+3. Install dependencies:
 ```bash
 npm install
 ```
 
-3. Environment variables are already configured in `.env.local`
+4. Environment variables are already configured in `.env.local`
 
-4. Run the development server:
+5. Run the development server:
 ```bash
 npm run dev
 ```
 
-5. Open [http://localhost:3000](http://localhost:3000) in your browser.
+6. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## Usage Guide
 
@@ -129,6 +147,16 @@ npm start
 1. **API Connection**: Ensure network access to Bayer's AI endpoint
 2. **Large Datasets**: Processing 100 profiles may take 2-3 minutes
 3. **Browser Compatibility**: Modern browsers required for chart rendering
+
+## Contributing
+
+Contributions are welcome! Please follow these steps:
+
+1. Fork the repository.
+2. Create a new branch: `git checkout -b my-new-feature`
+3. Make your changes and commit them: `git commit -am 'Add some feature'`
+4. Push to the branch: `git push origin my-new-feature`
+5. Submit a pull request.
 
 ## Support
 

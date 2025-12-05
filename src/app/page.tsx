@@ -291,7 +291,7 @@ export default function Home() {
             <div className="flex items-center">
               <Brain className="w-8 h-8 text-blue-600 mr-3" />
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Consumer Profile Analyzer</h1>
+                <h1 className="text-2xl font-bold text-gray-900">PULSE</h1>
                 <p className="text-sm text-gray-600">AI-powered consumer recruitment and preference analysis</p>
               </div>
             </div>
@@ -388,7 +388,7 @@ export default function Home() {
       <footer className="bg-white border-t mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="text-center text-gray-600">
-            <p>&copy; 2024 Consumer Profile Analyzer. Powered by myGenAssist. <br /> AI-generated content may contain inaccuracies. Please verify all information before use.</p>
+            <p>&copy; 2024 PULSE. Powered by myGenAssist. <br /> AI-generated content may contain inaccuracies. Please verify all information before use.</p>
           </div>
         </div>
       </footer>
