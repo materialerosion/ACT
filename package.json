@@ -9,6 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@azure/msal-browser": "^4.27.0",
+    "@azure/msal-react": "^3.0.23",
     "chart.js": "^4.5.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^3.0.3",

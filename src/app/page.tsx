@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DemographicInput, ConsumerProfile, Concept, AnalysisReport, PreferenceAnalysis } from '@/types';
 import DemographicForm from '@/components/DemographicForm';
 import ParticipantReview from '@/components/ParticipantReview';
@@ -8,16 +8,20 @@ import ConceptsForm from '@/components/ConceptsForm';
 import Analytics from '@/components/Analytics';
 import ReportDownload from '@/components/ReportDownload';
 import LoadingBar from '@/components/LoadingBar';
-import { Brain, Users, Target, BarChart3, Download } from 'lucide-react';
+import { Brain, Users, Target, BarChart3, Download, LogIn, LogOut } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
+import { useAuth } from '../contexts/AuthContext';
 
-type Step = 'demographics' | 'review' | 'concepts' | 'analysis' | 'results';
+type Step = 'login' | 'demographics' | 'review' | 'concepts' | 'analysis' | 'results';
 
 // Configuration - easily adjustable timeout settings
 const ANALYSIS_TIMEOUT_SECONDS = 600; // 10 minutes - adjust this value as needed
 
+import { InteractionStatus } from '@azure/msal-browser';
+
 export default function Home() {
-  const [currentStep, setCurrentStep] = useState<Step>('demographics');
+  const { isAuthenticated, login, logout, inProgress } = useAuth();
+  const [currentStep, setCurrentStep] = useState<Step>('login');
   const [demographics, setDemographics] = useState<DemographicInput | null>(null);
   const [profiles, setProfiles] = useState<ConsumerProfile[]>([]);
   const [concepts, setConcepts] = useState<Concept[]>([]);
@@ -25,6 +29,15 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingMessage, setLoadingMessage] = useState('');
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      setCurrentStep('demographics');
+    } else {
+      setCurrentStep('login');
+    }
+  }, [isAuthenticated]);
+
 
   const pollJobStatus = async (jobId: string): Promise<ConsumerProfile[]> => {
     const maxAttempts = 120; // Poll for up to 10 minutes (120 * 5 seconds)
@@ -267,6 +280,7 @@ export default function Home() {
   };
 
   const stepIcons = {
+    login: LogIn,
     demographics: Users,
     review: Users,
     concepts: Target,
@@ -275,6 +289,7 @@ export default function Home() {
   };
 
   const stepTitles = {
+    login: 'Login',
     demographics: 'Recruit Consumers',
     review: 'Review Participants',
     concepts: 'Add Concepts',
@@ -295,6 +310,14 @@ export default function Home() {
                 <p className="text-sm text-gray-600">AI-powered consumer recruitment and preference analysis</p>
               </div>
             </div>
+            {isAuthenticated && (
+              <button
+                onClick={() => logout()}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                Logout
+              </button>
+            )}
             {analysisReport && (
               <button
                 onClick={resetAnalysis}
@@ -313,7 +336,7 @@ export default function Home() {
           {Object.entries(stepTitles).map(([step, title], index) => {
             const Icon = stepIcons[step as Step];
             const isActive = currentStep === step;
-            const isCompleted = ['demographics', 'review', 'concepts', 'analysis'].indexOf(currentStep) > index;
+            const isCompleted = Object.keys(stepTitles).indexOf(currentStep) > index;
             
             return (
               <div key={step} className="flex items-center">
@@ -344,6 +367,19 @@ export default function Home() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
+
+        {currentStep === 'login' && (
+            <div className="flex flex-col items-center justify-center py-20">
+                {inProgress !== InteractionStatus.None ? (
+                    <p>Login in progress...</p>
+                ) : (
+                    <button onClick={() => login()} className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                        Login
+                    </button>
+                )}
+            </div>
+        )}
+
         {currentStep === 'demographics' && (
           <DemographicForm 
             onSubmit={handleDemographicsSubmit} 
