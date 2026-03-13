@@ -1,18 +1,18 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { DemographicInput, ConsumerProfile, Concept, AnalysisReport, PreferenceAnalysis } from '@/types';
+import { DemographicInput, ConsumerProfile, Concept, AnalysisReport, PreferenceAnalysis, Question } from '@/types';
 import DemographicForm from '@/components/DemographicForm';
 import ParticipantReview from '@/components/ParticipantReview';
-import ConceptsForm from '@/components/ConceptsForm';
+import DesignSurvey from '@/components/DesignSurvey';
 import Analytics from '@/components/Analytics';
 import ReportDownload from '@/components/ReportDownload';
 import LoadingBar from '@/components/LoadingBar';
-import { Brain, Users, Target, BarChart3, Download, LogIn, LogOut } from 'lucide-react';
+import { Brain, Users, Target, BarChart3, Download, LogIn, LogOut, HelpCircle } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useAuth } from '../contexts/AuthContext';
 
-type Step = 'login' | 'demographics' | 'review' | 'concepts' | 'analysis' | 'results';
+type Step = 'login' | 'demographics' | 'review' | 'design' | 'analysis' | 'results';
 
 // Configuration - easily adjustable timeout settings
 const ANALYSIS_TIMEOUT_SECONDS = 600; // 10 minutes - adjust this value as needed
@@ -25,6 +25,7 @@ export default function Home() {
   const [demographics, setDemographics] = useState<DemographicInput | null>(null);
   const [profiles, setProfiles] = useState<ConsumerProfile[]>([]);
   const [concepts, setConcepts] = useState<Concept[]>([]);
+  const [questions, setQuestions] = useState<Question[]>([]);
   const [analysisReport, setAnalysisReport] = useState<AnalysisReport | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
@@ -179,11 +180,12 @@ export default function Home() {
     throw new Error('Analysis timed out after 10 minutes. Please try again with fewer profiles or concepts.');
   };
 
-  const handleConceptsSubmit = async (conceptsData: Concept[]) => {
+  const handleDesignSurveySubmit = async (conceptsData: Concept[], questionsData: Question[]) => {
     setIsLoading(true);
     setLoadingProgress(0);
     setLoadingMessage('Analyzing Consumer Preferences');
     setConcepts(conceptsData);
+    setQuestions(questionsData);
     setCurrentStep('analysis');
 
     try {
@@ -198,6 +200,7 @@ export default function Home() {
         body: JSON.stringify({
           profiles,
           concepts: conceptsData,
+          questions: questionsData,
         }),
       });
 
@@ -238,6 +241,7 @@ export default function Home() {
         profiles,
         analyses: result.analyses,
         summary: result.summary,
+        questions: questionsData,
       };
 
       setAnalysisReport(report);
@@ -253,7 +257,7 @@ export default function Home() {
       } else {
         alert('Failed to analyze consumer preferences. Please try again.');
       }
-      setCurrentStep('concepts');
+      setCurrentStep('design');
     } finally {
       setTimeout(() => {
         setIsLoading(false);
@@ -268,7 +272,7 @@ export default function Home() {
   };
 
   const handleReviewContinue = () => {
-    setCurrentStep('concepts');
+    setCurrentStep('design');
   };
 
   const resetAnalysis = () => {
@@ -276,6 +280,7 @@ export default function Home() {
     setDemographics(null);
     setProfiles([]);
     setConcepts([]);
+    setQuestions([]);
     setAnalysisReport(null);
   };
 
@@ -283,7 +288,7 @@ export default function Home() {
     login: LogIn,
     demographics: Users,
     review: Users,
-    concepts: Target,
+    design: Target,
     analysis: Brain,
     results: BarChart3,
   };
@@ -292,7 +297,7 @@ export default function Home() {
     login: 'Login',
     demographics: 'Recruit Consumers',
     review: 'Review Participants',
-    concepts: 'Add Concepts',
+    design: 'Design Survey',
     analysis: 'Analyzing...',
     results: 'View Results',
   };
@@ -398,8 +403,8 @@ export default function Home() {
           />
         )}
 
-        {currentStep === 'concepts' && (
-          <ConceptsForm onSubmit={handleConceptsSubmit} isLoading={isLoading} />
+        {currentStep === 'design' && (
+          <DesignSurvey onSubmit={handleDesignSurveySubmit} isLoading={isLoading} />
         )}
 
         {currentStep === 'analysis' && (

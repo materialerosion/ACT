@@ -18,16 +18,15 @@ export interface ConsumerProfile {
 export interface PreferenceAnalysis {
   profileId: string;
   conceptId: string;
-  preference: number; // 1-10 scale
-  innovativeness: number; // 1-10 scale
-  differentiation: number; // 1-10 scale
-  reasoning: string;
+  questionResponses: { [questionId: string]: string | number | string[] };
 }
 
 export interface Concept {
   id: string;
   title: string;
   description: string;
+  imageBase64?: string;   // Optional base64-encoded image data
+  imageMimeType?: string; // e.g. 'image/png', 'image/jpeg'
 }
 
 export interface DemographicInput {
@@ -53,10 +52,16 @@ export interface AnalysisReport {
   profiles: ConsumerProfile[];
   analyses: PreferenceAnalysis[];
   summary: {
-    averagePreference: number;
-    averageInnovativeness: number;
-    averageDifferentiation: number;
-    topPerformingConcept: string;
     insights: string[];
   };
+  questions?: Question[];
+}
+
+export type ResponseType = 'scale_1_5' | 'scale_1_10' | 'rank_order' | 'open_ended';
+
+export interface Question {
+  id: string;
+  text: string;
+  type: ResponseType;
+  enabled: boolean;
 }

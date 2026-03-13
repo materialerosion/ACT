@@ -15,8 +15,8 @@ import {
   Filler,
 } from 'chart.js';
 import { Bar, Radar } from 'react-chartjs-2';
-import { PreferenceAnalysis, Concept, AnalysisReport, ConsumerProfile } from '@/types';
-import { TrendingUp, Star, Zap, BarChart3, Filter, X } from 'lucide-react';
+import { PreferenceAnalysis, Concept, AnalysisReport, ConsumerProfile, Question } from '@/types';
+import { TrendingUp, Star, Zap, BarChart3, Filter, X, HelpCircle } from 'lucide-react';
 
 ChartJS.register(
   CategoryScale,
@@ -48,7 +48,8 @@ interface DemographicFilters {
 }
 
 export default function Analytics({ report }: AnalyticsProps) {
-  const { concepts, analyses, summary, profiles } = report;
+  const { concepts, analyses, summary, profiles, questions: reportQuestions } = report;
+  const questions = reportQuestions || [];
 
   // Demographics filter state
   const [filters, setFilters] = useState<DemographicFilters>({
@@ -64,6 +65,7 @@ export default function Analytics({ report }: AnalyticsProps) {
   });
 
   const [showFilters, setShowFilters] = useState(false);
+  const [selectedQuestionId, setSelectedQuestionId] = useState<string | null>(questions.length > 0 ? questions[0].id : null);
 
   // Get unique values for each demographic category
   const demographicOptions = useMemo(() => {
@@ -145,42 +147,7 @@ export default function Analytics({ report }: AnalyticsProps) {
     });
   };
 
-  // Prepare data for concepts comparison chart (using filtered data)
-  const conceptsData = {
-    labels: concepts.map(concept => concept.title),
-    datasets: [
-      {
-        label: 'Preference',
-        data: concepts.map(concept => {
-          const conceptAnalyses = filteredAnalyses.filter(a => a.conceptId === concept.id);
-          return conceptAnalyses.length > 0 ? conceptAnalyses.reduce((sum, a) => sum + a.preference, 0) / conceptAnalyses.length : 0;
-        }),
-        backgroundColor: 'rgba(59, 130, 246, 0.8)',
-        borderColor: 'rgba(59, 130, 246, 1)',
-        borderWidth: 1,
-      },
-      {
-        label: 'Innovativeness',
-        data: concepts.map(concept => {
-          const conceptAnalyses = filteredAnalyses.filter(a => a.conceptId === concept.id);
-          return conceptAnalyses.length > 0 ? conceptAnalyses.reduce((sum, a) => sum + a.innovativeness, 0) / conceptAnalyses.length : 0;
-        }),
-        backgroundColor: 'rgba(16, 185, 129, 0.8)',
-        borderColor: 'rgba(16, 185, 129, 1)',
-        borderWidth: 1,
-      },
-      {
-        label: 'Differentiation',
-        data: concepts.map(concept => {
-          const conceptAnalyses = filteredAnalyses.filter(a => a.conceptId === concept.id);
-          return conceptAnalyses.length > 0 ? conceptAnalyses.reduce((sum, a) => sum + a.differentiation, 0) / conceptAnalyses.length : 0;
-        }),
-        backgroundColor: 'rgba(245, 158, 11, 0.8)',
-        borderColor: 'rgba(245, 158, 11, 1)',
-        borderWidth: 1,
-      },
-    ],
-  };
+
 
   // Prepare data for radar chart (overall performance, using filtered data)
   const radarData = {
@@ -193,10 +160,22 @@ export default function Analytics({ report }: AnalyticsProps) {
         data: concepts.map(concept => {
           const conceptAnalyses = filteredAnalyses.filter(a => a.conceptId === concept.id);
           if (conceptAnalyses.length === 0) return 0;
-          const avgPref = conceptAnalyses.reduce((sum, a) => sum + a.preference, 0) / conceptAnalyses.length;
-          const avgInno = conceptAnalyses.reduce((sum, a) => sum + a.innovativeness, 0) / conceptAnalyses.length;
-          const avgDiff = conceptAnalyses.reduce((sum, a) => sum + a.differentiation, 0) / conceptAnalyses.length;
-          return (avgPref + avgInno + avgDiff) / 3;
+
+          const getAvgForQuestion = (qId: string) => {
+            const responses = conceptAnalyses
+              .map(a => a.questionResponses ? Number(a.questionResponses[qId]) : NaN)
+              .filter(n => !isNaN(n));
+            return responses.length > 0 ? responses.reduce((sum, r) => sum + r, 0) / responses.length : 0;
+          };
+
+          const avgPref = getAvgForQuestion('preference');
+          const avgInno = getAvgForQuestion('innovativeness');
+          const avgDiff = getAvgForQuestion('differentiation');
+          
+          const scoreComponents = [avgPref, avgInno, avgDiff].filter(s => s > 0);
+          if (scoreComponents.length === 0) return 0;
+
+          return scoreComponents.reduce((sum, s) => sum + s, 0) / scoreComponents.length;
         }),
         backgroundColor: 'rgba(139, 92, 246, 0.2)',
         borderColor: 'rgba(139, 92, 246, 1)',
@@ -217,7 +196,7 @@ export default function Analytics({ report }: AnalyticsProps) {
       },
       title: {
         display: true,
-        text: 'Consumer Response Analysis by Concepts',
+        text: 'Survey Questions Analysis',
       },
     },
     scales: {
@@ -246,52 +225,110 @@ export default function Analytics({ report }: AnalyticsProps) {
       },
     },
   };
-
-  // Calculate filtered summary statistics
-  const filteredSummary = useMemo(() => {
+  const summaryCardData = useMemo(() => {
     if (filteredAnalyses.length === 0) {
-      return {
-        averagePreference: 0,
-        averageInnovativeness: 0,
-        averageDifferentiation: 0,
-        topPerformingConcept: 'No data',
-      };
+        return [];
     }
 
-    const avgPref = filteredAnalyses.reduce((sum, a) => sum + a.preference, 0) / filteredAnalyses.length;
-    const avgInno = filteredAnalyses.reduce((sum, a) => sum + a.innovativeness, 0) / filteredAnalyses.length;
-    const avgDiff = filteredAnalyses.reduce((sum, a) => sum + a.differentiation, 0) / filteredAnalyses.length;
+    const scaleQuestions = questions.filter(
+        q => (q.type === 'scale_1_5' || q.type === 'scale_1_10') && q.enabled
+    );
 
-    // Find top performing concept in filtered data
+    const cards = scaleQuestions.map(question => {
+        const getResponseValue = (analysis: PreferenceAnalysis): number | null => {
+            if (analysis.questionResponses && analysis.questionResponses[question.id] !== undefined) {
+                const value = Number(analysis.questionResponses[question.id]);
+                return isNaN(value) ? null : value;
+            }
+            return null;
+        }
+
+        const responses = filteredAnalyses.map(getResponseValue).filter((r): r is number => r !== null);
+        const average = responses.length > 0 ? responses.reduce((sum, r) => sum + r, 0) / responses.length : 0;
+
+        return {
+            id: question.id,
+            text: question.text,
+            value: average.toFixed(1),
+            maxValue: question.type === 'scale_1_5' ? 5 : 10,
+            isNumeric: true,
+        };
+    });
+
+    // Add Top Performing Concept
     const conceptScores = concepts.map(concept => {
       const conceptAnalyses = filteredAnalyses.filter(a => a.conceptId === concept.id);
       if (conceptAnalyses.length === 0) return { concept, avgScore: 0 };
-      const avgScore = conceptAnalyses.reduce((sum, a) => 
-        sum + (a.preference + a.innovativeness + a.differentiation) / 3, 0
-      ) / conceptAnalyses.length;
+      
+      const getAvgForQuestion = (qId: string) => {
+        const responses = conceptAnalyses
+          .map(a => a.questionResponses ? Number(a.questionResponses[qId]) : NaN)
+          .filter(n => !isNaN(n));
+        return responses.length > 0 ? responses.reduce((sum, r) => sum + r, 0) / responses.length : 0;
+      };
+
+      const scoreComponents = ['preference', 'innovativeness', 'differentiation']
+        .map(qId => getAvgForQuestion(qId))
+        .filter(score => score > 0);
+
+      if (scoreComponents.length === 0) return { concept, avgScore: 0 };
+        
+      const avgScore = scoreComponents.reduce((sum, s) => sum + s, 0) / scoreComponents.length;
       return { concept, avgScore };
     });
-    const topConcept = conceptScores.reduce((max, current) => 
-      current.avgScore > max.avgScore ? current : max
-    );
+
+    if (conceptScores.length > 0) {
+        const topConcept = conceptScores.reduce((max, current) => 
+            current.avgScore > max.avgScore ? current : max
+        );
+        if (topConcept.avgScore > 0) {
+            cards.push({
+                id: 'top-concept',
+                text: 'Top Concept',
+                value: topConcept.concept.title,
+                isNumeric: false,
+            } as any);
+        }
+    }
+
+    return cards;
+  }, [filteredAnalyses, questions, concepts]);
+
+
+  const selectedQuestion = useMemo(() => questions.find(q => q.id === selectedQuestionId), [questions, selectedQuestionId]);
+
+  const questionChartData = useMemo(() => {
+    if (!selectedQuestion || (selectedQuestion.type !== 'scale_1_5' && selectedQuestion.type !== 'scale_1_10')) return null;
 
     return {
-      averagePreference: avgPref,
-      averageInnovativeness: avgInno,
-      averageDifferentiation: avgDiff,
-      topPerformingConcept: topConcept.concept.title,
+      labels: concepts.map(c => c.title),
+      datasets: [
+        {
+          label: selectedQuestion.text,
+          data: concepts.map(concept => {
+            const conceptAnalyses = filteredAnalyses.filter(a => a.conceptId === concept.id && a.questionResponses && a.questionResponses[selectedQuestion.id]);
+            return conceptAnalyses.length > 0
+              ? conceptAnalyses.reduce((sum, a) => sum + Number(a.questionResponses![selectedQuestion.id]), 0) / conceptAnalyses.length
+              : 0;
+          }),
+          backgroundColor: 'rgba(79, 70, 229, 0.8)',
+          borderColor: 'rgba(79, 70, 229, 1)',
+          borderWidth: 1,
+        },
+      ],
     };
-  }, [filteredAnalyses, concepts]);
+  }, [filteredAnalyses, concepts, selectedQuestion]);
 
-  // Calculate top and bottom performing concepts (using filtered data)
-  const conceptPerformance = concepts.map(concept => {
-    const conceptAnalyses = filteredAnalyses.filter(a => a.conceptId === concept.id);
-    if (conceptAnalyses.length === 0) return { concept, avgScore: 0 };
-    const avgScore = conceptAnalyses.reduce((sum, a) => 
-      sum + (a.preference + a.innovativeness + a.differentiation) / 3, 0
-    ) / conceptAnalyses.length;
-    return { concept, avgScore };
-  }).sort((a, b) => b.avgScore - a.avgScore);
+
+  const questionOpenEndedData = useMemo(() => {
+    if (!selectedQuestion || selectedQuestion.type !== 'open_ended') return null;
+    return filteredAnalyses.map(analysis => ({
+      response: analysis.questionResponses ? analysis.questionResponses[selectedQuestion.id] : 'N/A',
+      profile: profiles.find(p => p.id === analysis.profileId)
+    })).filter(item => item.response && item.response !== 'N/A');
+
+  }, [filteredAnalyses, selectedQuestion, profiles]);
+
 
   return (
     <div className="max-w-7xl mx-auto p-6 space-y-8">
@@ -492,54 +529,59 @@ export default function Analytics({ report }: AnalyticsProps) {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-blue-600 text-sm font-medium">Avg Preference</p>
-              <p className="text-3xl font-bold text-blue-800">
-                {filteredSummary.averagePreference.toFixed(1)}
-              </p>
-            </div>
-            <TrendingUp className="w-8 h-8 text-blue-600" />
-          </div>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {summaryCardData.map((card, index) => {
+            const visualIndex = index % 4;
+            let Icon, classes;
 
-        <div className="bg-green-50 p-6 rounded-lg border border-green-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-green-600 text-sm font-medium">Avg Innovation</p>
-              <p className="text-3xl font-bold text-green-800">
-                {filteredSummary.averageInnovativeness.toFixed(1)}
-              </p>
-            </div>
-            <Zap className="w-8 h-8 text-green-600" />
-          </div>
-        </div>
+            switch (visualIndex) {
+                case 0:
+                    Icon = TrendingUp;
+                    classes = {
+                        bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-600', textBold: 'text-blue-800'
+                    };
+                    break;
+                case 1:
+                    Icon = Zap;
+                    classes = {
+                        bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-600', textBold: 'text-green-800'
+                    };
+                    break;
+                case 2:
+                    Icon = BarChart3;
+                    classes = {
+                        bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-600', textBold: 'text-yellow-800'
+                    };
+                    break;
+                default:
+                    Icon = Star;
+                    classes = {
+                        bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-600', textBold: 'text-purple-800'
+                    };
+                    break;
+            }
 
-        <div className="bg-yellow-50 p-6 rounded-lg border border-yellow-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-yellow-600 text-sm font-medium">Avg Differentiation</p>
-              <p className="text-3xl font-bold text-yellow-800">
-                {filteredSummary.averageDifferentiation.toFixed(1)}
-              </p>
-            </div>
-            <BarChart3 className="w-8 h-8 text-yellow-600" />
-          </div>
-        </div>
-
-        <div className="bg-purple-50 p-6 rounded-lg border border-purple-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-purple-600 text-sm font-medium">Top Concept</p>
-              <p className="text-sm font-bold text-purple-800 leading-tight">
-                {filteredSummary.topPerformingConcept}
-              </p>
-            </div>
-            <Star className="w-8 h-8 text-purple-600" />
-          </div>
-        </div>
+            return (
+                <div key={card.id} className={`${classes.bg} p-6 rounded-lg border ${classes.border}`}>
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className={`${classes.text} text-sm font-medium`}>{card.text}</p>
+                            {card.isNumeric ? (
+                                <p className={`text-3xl font-bold ${classes.textBold}`}>
+                                    {card.value}
+                                    <span className="text-xl">/{card.maxValue}</span>
+                                </p>
+                            ) : (
+                                <p className={`text-lg font-bold ${classes.textBold} leading-tight`}>
+                                    {card.value}
+                                </p>
+                            )}
+                        </div>
+                        <Icon className={`w-8 h-8 ${classes.text}`} />
+                    </div>
+                </div>
+            );
+        })}
       </div>
 
       {/* Charts Row */}
@@ -552,59 +594,68 @@ export default function Analytics({ report }: AnalyticsProps) {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Bar Chart */}
           <div className="bg-white p-6 rounded-lg shadow-lg">
-            <Bar data={conceptsData} options={chartOptions} />
-          </div>
-
-          {/* Radar Chart */}
-          <div className="bg-white p-6 rounded-lg shadow-lg">
             <Radar data={radarData} options={radarOptions} />
           </div>
         </div>
       )}
-
-      {/* Performance Rankings */}
-      {filteredProfiles.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Top Performing Claims */}
-          <div className="bg-white p-6 rounded-lg shadow-lg">
-            <h3 className="text-xl font-bold text-gray-800 mb-4">Top Performing Concepts</h3>
-            <div className="space-y-3">
-              {conceptPerformance.slice(0, 3).map((item, index) => (
-                <div key={item.concept.id} className="flex items-center p-3 bg-green-50 rounded-lg">
-                  <div className="flex-shrink-0 w-8 h-8 bg-green-600 text-white rounded-full flex items-center justify-center text-sm font-bold mr-3">
-                    {index + 1}
-                  </div>
-                  <div className="flex-grow">
-                    <p className="font-semibold text-gray-800">{item.concept.title}</p>
-                    <p className="text-sm text-gray-600">Score: {item.avgScore.toFixed(2)}/10</p>
-                  </div>
-                </div>
+      
+      {/* Questions Analysis */}
+      {questions && questions.length > 0 && (
+        <div className="bg-white p-6 rounded-lg shadow-lg">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-800 flex items-center">
+              <HelpCircle className="w-5 h-5 mr-2" />
+              Question Analysis
+            </h3>
+            <select
+              value={selectedQuestionId || ''}
+              onChange={e => setSelectedQuestionId(e.target.value)}
+              className="px-3 py-1 text-sm bg-gray-100 border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+            >
+              {questions.map((q: Question) => (
+                <option key={q.id} value={q.id}>{q.text}</option>
               ))}
-            </div>
+            </select>
           </div>
 
-          {/* Bottom Performing Concepts */}
-          <div className="bg-white p-6 rounded-lg shadow-lg">
-            <h3 className="text-xl font-bold text-gray-800 mb-4">Improvement Opportunities</h3>
-            <div className="space-y-3">
-              {conceptPerformance.slice(-3).reverse().map((item, index) => (
-                <div key={item.concept.id} className="flex items-center p-3 bg-red-50 rounded-lg">
-                  <div className="flex-shrink-0 w-8 h-8 bg-red-600 text-white rounded-full flex items-center justify-center text-sm font-bold mr-3">
-                    {conceptPerformance.length - index}
-                  </div>
-                  <div className="flex-grow">
-                    <p className="font-semibold text-gray-800">{item.concept.title}</p>
-                    <p className="text-sm text-gray-600">Score: {item.avgScore.toFixed(2)}/10</p>
+          {filteredProfiles.length === 0 ? (
+              <div className="text-center py-8">
+                  <p className="text-gray-500 text-lg mb-2">No profiles match the selected filters</p>
+                  <p className="text-gray-400">Try adjusting your filter criteria to see question data.</p>
+              </div>
+          ) : (
+            <div>
+              {selectedQuestion && (selectedQuestion.type === 'scale_1_5' || selectedQuestion.type === 'scale_1_10') && questionChartData && (
+                <Bar data={questionChartData} options={{
+                  ...chartOptions,
+                  scales: { y: { beginAtZero: true, max: selectedQuestion.type === 'scale_1_5' ? 5 : 10 } },
+                  plugins: { ...chartOptions.plugins, title: { display: true, text: selectedQuestion.text } }
+                }} />
+              )}
+
+
+              {selectedQuestion && selectedQuestion.type === 'open_ended' && questionOpenEndedData && (
+                <div>
+                  <h4 className="text-md font-semibold text-gray-700 mb-3">{selectedQuestion.text} - Responses</h4>
+                  <div className="max-h-96 overflow-y-auto space-y-3 pr-4">
+                    {questionOpenEndedData.map((item, index) => (
+                      <div key={index} className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                        <p className="text-sm text-gray-800">{String(item.response)}</p>
+                        {item.profile && <p className="text-xs text-gray-500 mt-1">- {item.profile.name}, {item.profile.age}</p>}
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))}
+              )}
             </div>
-          </div>
+          )}
         </div>
       )}
 
+      
+
       {/* Key Insights */}
-      <div className="bg-white p-6 rounded-lg shadow-lg">
+      <div className="bg-w-ite p-6 rounded-lg shadow-lg">
         <h3 className="text-xl font-bold text-gray-800 mb-4">Key Insights</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {summary.insights.map((insight, index) => (

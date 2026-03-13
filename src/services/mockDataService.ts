@@ -186,10 +186,12 @@ export class MockDataService {
         const analysis: PreferenceAnalysis = {
           profileId: profile.id,
           conceptId: concept.id,
-          preference,
-          innovativeness,
-          differentiation,
-          reasoning
+          questionResponses: {
+            preference: preference,
+            innovativeness: innovativeness,
+            differentiation: differentiation,
+            rationale: reasoning,
+          }
         };
 
         analyses.push(analysis);

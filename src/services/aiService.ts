@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
-import { ConsumerProfile, DemographicInput, PreferenceAnalysis, Concept } from '@/types';
+import type { ChatCompletionContentPart } from 'openai/resources/chat/completions';
+import { ConsumerProfile, DemographicInput, PreferenceAnalysis, Concept, Question } from '@/types';
 import getConfig from 'next/config';
 
 const { serverRuntimeConfig } = getConfig();
@@ -50,8 +51,6 @@ export class AIService {
       let prompt: string;
       
       if (isFirstBatch) {
-        // First batch: Full instructions
-        // add psychographic information such as how many times they have bought a product in the last 6 months
         const ageRange = demographics.ageMin && demographics.ageMax 
           ? `${demographics.ageMin}-${demographics.ageMax}` 
           : demographics.ageRanges.join(', ');
@@ -98,9 +97,8 @@ export class AIService {
           }
         ]
         
-        Ensure variety and realism. Each profile should be unique and realistic.`;
+        Ensure variety and realism. Each profile should be unique and realistic.`
         
-        // Initialize conversation history for first batch
         conversationHistory = [
           {
             role: 'system',
@@ -112,10 +110,8 @@ export class AIService {
           }
         ];
       } else {
-        // Subsequent batches: Use continue prompt
-        prompt = `continue - generate exactly ${currentBatchSize} more diverse consumer profiles following the same format and demographic constraints. Ensure they are different from previous profiles and maintain variety.`;
+        prompt = `continue - generate exactly ${currentBatchSize} more diverse consumer profiles following the same format and demographic constraints. Ensure they are different from previous profiles and maintain variety.`
         
-        // Add the continue prompt to conversation history
         conversationHistory.push({
           role: 'user',
           content: prompt
@@ -135,24 +131,20 @@ export class AIService {
           continue;
         }
 
-        // Extract and parse the JSON response
         const cleanedContent = this.extractJsonFromResponse(content);
         
         try {
           const batchProfiles: ConsumerProfile[] = JSON.parse(cleanedContent);
           
-          // Validate the batch
           if (Array.isArray(batchProfiles) && batchProfiles.length > 0) {
             profiles.push(...batchProfiles);
             console.log(`Successfully generated ${batchProfiles.length} profiles in batch ${i / batchSize + 1}`);
             
-            // Add the AI response to conversation history for context in next batch
             conversationHistory.push({
               role: 'assistant',
               content: cleanedContent
             });
             
-            // Keep conversation history manageable - only keep system message + last 2 exchanges
             if (conversationHistory.length > 5) {
               conversationHistory = [
                 conversationHistory[0], // Keep system message
@@ -166,15 +158,12 @@ export class AIService {
           console.error(`Failed to parse AI response for batch ${i / batchSize + 1}:`, parseError);
           console.error('Raw content:', content);
           console.error('Cleaned content:', cleanedContent);
-          // Continue with next batch instead of failing completely
         }
       } catch (error) {
         console.error(`Error generating profiles for batch ${i / batchSize + 1}:`, error);
-        // Continue with next batch instead of failing completely
       }
     }
 
-    // If we got some profiles, return them, otherwise throw error
     if (profiles.length > 0) {
       console.log(`Successfully generated ${profiles.length} total profiles`);
       return profiles.slice(0, count); // Ensure we don't exceed the requested count
@@ -183,113 +172,160 @@ export class AIService {
     }
   }
 
+  // Build type-specific instructions for each question type
+  private static getTypeInstructions(type: string): string {
+    switch (type) {
+      case 'scale_1_5':
+        return 'Respond with an integer from 1 (lowest) to 5 (highest)';
+      case 'scale_1_10':
+        return 'Respond with an integer from 1 (lowest) to 10 (highest)';
+      case 'open_ended':
+        return 'Respond with 1-3 sentences from the consumer\'s first-person perspective';
+      case 'rank_order':
+        return 'Respond with an array of concept IDs in preference order (most preferred first)';
+      default:
+        return 'Respond appropriately';
+    }
+  }
+
+  // Build the expected JSON value type for the example
+  private static getTypeExample(type: string): string {
+    switch (type) {
+      case 'scale_1_5':
+        return '3';
+      case 'scale_1_10':
+        return '7';
+      case 'open_ended':
+        return '"I think this product..."';
+      case 'rank_order':
+        return '["concept_id_1", "concept_id_2"]';
+      default:
+        return '"response"';
+    }
+  }
+
+  // Build multimodal message content for vision API
+  private static buildUserMessageContent(promptText: string, concept: Concept): string | ChatCompletionContentPart[] {
+    if (concept.imageBase64 && concept.imageMimeType) {
+      // Multimodal message with image
+      const parts: ChatCompletionContentPart[] = [
+        { type: 'text' as const, text: promptText },
+        {
+          type: 'image_url' as const,
+          image_url: {
+            url: `data:${concept.imageMimeType};base64,${concept.imageBase64}`,
+            detail: 'low' as const
+          }
+        }
+      ];
+      return parts;
+    }
+    // Text-only message
+    return promptText;
+  }
+
   static async analyzePreferences(
     profiles: ConsumerProfile[], 
-    concepts: Concept[]
+    concepts: Concept[],
+    questions: Question[]
   ): Promise<PreferenceAnalysis[]> {
     console.log('🤖 [DEBUG] Using AI SERVICE for preference analysis');
-    console.log(`🤖 [DEBUG] Analyzing ${profiles.length} profiles against ${concepts.length} concepts using AI`);
+    console.log(`🤖 [DEBUG] Analyzing ${profiles.length} profiles against ${concepts.length} concepts and ${questions.length} questions using AI`);
     
     const analyses: PreferenceAnalysis[] = [];
     const startTime = Date.now();
     
-    // Available models to rotate through - including corrected Claude model name for myGenAssist
     const models = ['grok-3', 'gpt-4o-mini', 'gpt-5-nano', 'claude-sonnet-4'];
+    const batchSize = 5;
     
-    // Process profiles in larger batches to reduce API calls and improve speed
-    const batchSize = 5; // Increased to 5 to reduce total processing time further
-    
+    // Build the survey questions section once (shared across all batches)
+    const surveyQuestionsSection = questions.map(q => 
+      `  - ID: "${q.id}" | Question: "${q.text}" | Type: ${q.type} | Instructions: ${this.getTypeInstructions(q.type)}`
+    ).join('\n');
+
+    // Build the example questionResponses object
+    const exampleResponses = questions.map(q => 
+      `      "${q.id}": ${this.getTypeExample(q.type)}`
+    ).join(',\n');
+
     for (let i = 0; i < profiles.length; i += batchSize) {
       const batch = profiles.slice(i, i + batchSize);
       
       for (const concept of concepts) {
-        // Progress tracking
         const currentElapsed = Date.now() - startTime;
         const totalBatches = Math.ceil(profiles.length / batchSize);
         const currentBatch = Math.floor(i / batchSize) + 1;
         const conceptIndex = concepts.indexOf(concept) + 1;
         console.log(`📊 [DEBUG] Processing batch ${currentBatch}/${totalBatches}, concept ${conceptIndex}/${concepts.length} (${currentElapsed}ms elapsed)`);
         
-        // Rotate through models based on current iteration
         const currentModel = models[(i + concepts.indexOf(concept)) % models.length];
-        
-        const prompt = `I want you to put yourself in the shoes of each consumer profile below and respond to this product concept from their personal perspective.
 
-PRODUCT CONCEPT TO EVALUATE:
-"${concept.title}"
+        // Build consumer profiles section
+        const profilesSection = batch.map(profile => 
+`Profile ID: "${profile.id}"
+  Demographics: ${profile.age}yo ${profile.gender}, ${profile.location}, ${profile.income}, ${profile.education}
+  Lifestyle: ${profile.lifestyle}
+  Interests: ${profile.interests.join(', ')}
+  Shopping: ${profile.shoppingBehavior}
+  Tech savviness: ${profile.techSavviness} | Eco awareness: ${profile.environmentalAwareness}
+  Brand loyalty: ${profile.brandLoyalty} | Price sensitivity: ${profile.pricesensitivity}`
+        ).join('\n\n');
+
+        // Build the structured prompt
+        const promptText = `## Task
+Evaluate the following product concept from the perspective of each consumer profile. For each profile, answer every survey question as if you ARE that person.
+
+## Product Concept
+Title: "${concept.title}"
 Description: "${concept.description}"
+${concept.imageBase64 ? '[A product image is attached — consider its visual design, packaging, and presentation in your evaluation]' : ''}
 
-CONSUMER PROFILES TO EMBODY:
-${batch.map(profile => `
-Profile ${profile.id} - Put yourself in my shoes as:
-- I am ${profile.age} years old, ${profile.gender}
-- I live in ${profile.location}
-- My income level: ${profile.income}
-- My education: ${profile.education}
-- My lifestyle: ${profile.lifestyle}
-- My interests: ${profile.interests.join(', ')}
-- How I shop: ${profile.shoppingBehavior}
-- My tech comfort level: ${profile.techSavviness}
-- My environmental views: ${profile.environmentalAwareness}
-- My brand loyalty: ${profile.brandLoyalty}
-- My price sensitivity: ${profile.pricesensitivity}
-`).join('\n')}
+## Survey Questions
+${surveyQuestionsSection}
 
-For each profile, speaking as that person, rate on a scale of 1-10:
-1. PREFERENCE: How much would I personally like/prefer this concept?
-2. INNOVATIVENESS: How innovative/new does this concept seem to me?
-3. DIFFERENTIATION: How different/unique is this concept from what I've seen from competitors?
+## Consumer Profiles
+${profilesSection}
 
-Also provide brief reasoning from that person's perspective (1-2 sentences starting with "I think..." or "I feel...").
-
-Return as JSON array:
+## Required JSON Response Format
+Return ONLY a valid JSON array. Each element must match this exact schema:
 [
   {
-    "profileId": "profile_id",
+    "profileId": "the_profile_id",
     "conceptId": "${concept.id}",
-    "preference": number,
-    "innovativeness": number,
-    "differentiation": number,
-    "reasoning": "first person explanation from this consumer's perspective"
+    "questionResponses": {
+${exampleResponses}
+    }
   }
-]`;
+]
+
+IMPORTANT: Return exactly ${batch.length} objects, one per profile. Use the exact profile IDs and concept ID shown above. For scale questions, return integers only. For open-ended questions, respond in first person as the consumer.`;
+
+        const systemPrompt = 'You are a consumer research simulator. You embody different consumer personas and provide their authentic, first-person reactions to product concepts. Consider each person\'s unique demographics, lifestyle, values, and circumstances when responding. IMPORTANT: Respond with valid JSON only — no markdown code blocks, no explanations, no text before or after the JSON array.';
 
         try {
           let response;
           let modelUsed = currentModel;
           
+          const userContent = this.buildUserMessageContent(promptText, concept);
+          
           try {
-            // Try the selected model first
             response = await openai.chat.completions.create({
               model: currentModel,
               messages: [
-                {
-                  role: 'system',
-                  content: 'You are a method actor who can embody different consumer personas. When given consumer profiles, you will think and respond exactly as each person would, using their personal perspective and voice. Consider their unique background, values, and circumstances. IMPORTANT: Respond with valid JSON only - no markdown code blocks, no explanations, just a pure JSON array with first-person reasoning.'
-                },
-                {
-                  role: 'user',
-                  content: prompt
-                }
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userContent }
               ],
               temperature: 0.3,
               max_tokens: 2000,
             });
           } catch (modelError) {
             console.warn(`Model ${currentModel} failed, falling back to gpt-4o:`, modelError);
-            // Fallback to default model if current model fails
             modelUsed = 'gpt-4o';
             response = await openai.chat.completions.create({
               model: 'gpt-4o',
               messages: [
-                {
-                  role: 'system',
-                  content: 'You are a method actor who can embody different consumer personas. When given consumer profiles, you will think and respond exactly as each person would, using their personal perspective and voice. Consider their unique background, values, and circumstances. IMPORTANT: Respond with valid JSON only - no markdown code blocks, no explanations, just a pure JSON array with first-person reasoning.'
-                },
-                {
-                  role: 'user',
-                  content: prompt
-                }
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userContent }
               ],
               temperature: 0.3,
               max_tokens: 2000,
@@ -306,12 +342,10 @@ Return as JSON array:
             } catch (parseError) {
               console.error(`Failed to parse analysis response for concept ${concept.id} using model ${modelUsed}:`, parseError);
               console.error('Raw content:', content);
-              // Continue with other concepts even if one fails
             }
           }
         } catch (error) {
           console.error(`Error analyzing preferences for concept ${concept.id}:`, error);
-          // Continue with other concepts even if one fails
         }
       }
     }
@@ -341,9 +375,21 @@ ${concepts.map(concept => `- ${concept.title}: ${concept.description}`).join('\n
 AVERAGE SCORES BY CONCEPT:
 ${concepts.map(concept => {
   const conceptAnalyses = analyses.filter(a => a.conceptId === concept.id);
-  const avgPref = conceptAnalyses.reduce((sum, a) => sum + a.preference, 0) / conceptAnalyses.length;
-  const avgInno = conceptAnalyses.reduce((sum, a) => sum + a.innovativeness, 0) / conceptAnalyses.length;
-  const avgDiff = conceptAnalyses.reduce((sum, a) => sum + a.differentiation, 0) / conceptAnalyses.length;
+  if (conceptAnalyses.length === 0) {
+    return `${concept.title}: No data`;
+  }
+  
+  const getAvgForQuestion = (qId: string) => {
+    const responses = conceptAnalyses
+      .map(a => a.questionResponses ? Number(a.questionResponses[qId]) : NaN)
+      .filter(n => !isNaN(n));
+    return responses.length > 0 ? responses.reduce((sum, r) => sum + r, 0) / responses.length : 0;
+  };
+  
+  const avgPref = getAvgForQuestion('preference');
+  const avgInno = getAvgForQuestion('innovativeness');
+  const avgDiff = getAvgForQuestion('differentiation');
+  
   return `${concept.title}: Preference ${avgPref.toFixed(1)}, Innovation ${avgInno.toFixed(1)}, Differentiation ${avgDiff.toFixed(1)}`;
 }).join('\n')}
 
@@ -382,7 +428,6 @@ Return as a JSON array of insight strings:
         } catch (parseError) {
           console.error('Failed to parse insights response:', parseError);
           console.error('Raw content:', content);
-          // Return a fallback insight
           return ['Unable to generate detailed insights due to parsing error.'];
         }
       }

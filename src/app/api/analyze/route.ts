@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AIService } from '@/services/aiService';
 import { MockDataService } from '@/services/mockDataService';
-import { ConsumerProfile, Concept } from '@/types';
+import { ConsumerProfile, Concept, Question } from '@/types';
 
 // Configure route segment to extend timeout for long-running AI analysis
 export const maxDuration = 900; // 15 minutes in seconds
@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { profiles, concepts }: { profiles: ConsumerProfile[]; concepts: Concept[] } = body;
+  const { profiles, concepts, questions }: { profiles: ConsumerProfile[]; concepts: Concept[]; questions?: Question[] } = body;
 
   // Validate input
   if (!profiles || !Array.isArray(profiles) || profiles.length === 0) {
@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
 
       try {
         const startTime = Date.now();
-        analyses = await AIService.analyzePreferences(profiles, concepts);
+        analyses = await AIService.analyzePreferences(profiles, concepts, questions || []);
         const analysisTime = Date.now() - startTime;
         console.log(`⏱️ [DEBUG] Analysis completed in ${analysisTime}ms with ${analyses.length} results`);
         
@@ -119,18 +119,8 @@ export async function POST(request: NextRequest) {
         console.log('✅ [DEBUG] Mock Data Service successfully completed analysis and insights');
       }
 
-      // Calculate summary statistics
+      // Create summary object
       const summary = {
-        averagePreference: analyses.reduce((sum, a) => sum + a.preference, 0) / analyses.length,
-        averageInnovativeness: analyses.reduce((sum, a) => sum + a.innovativeness, 0) / analyses.length,
-        averageDifferentiation: analyses.reduce((sum, a) => sum + a.differentiation, 0) / analyses.length,
-        topPerformingConcept: concepts.reduce((best, concept) => {
-          const conceptAnalyses = analyses.filter(a => a.conceptId === concept.id);
-          const avgScore = conceptAnalyses.reduce((sum, a) => sum + a.preference, 0) / conceptAnalyses.length;
-          const bestAnalyses = analyses.filter(a => a.conceptId === best.id);
-          const bestAvgScore = bestAnalyses.reduce((sum, a) => sum + a.preference, 0) / bestAnalyses.length;
-          return avgScore > bestAvgScore ? concept : best;
-        }).title,
         insights,
       };
 
