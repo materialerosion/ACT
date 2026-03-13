@@ -515,14 +515,25 @@ export default function Home() {
               <ChevronLeft className="w-4 h-4" />
               Back
             </button>
-            <button
-              onClick={goForward}
-              disabled={!canGoForward()}
-              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white transition-colors flex items-center gap-2 shadow-sm"
-            >
-              Forward
-              <ChevronRight className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-3">
+              {currentStep === 'results' && analysisReport && (
+                <button
+                  onClick={() => navigateToStep('insights', true)}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium flex items-center gap-2 shadow-sm"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  Insights &amp; Export
+                </button>
+              )}
+              <button
+                onClick={goForward}
+                disabled={!canGoForward()}
+                className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white transition-colors flex items-center gap-2 shadow-sm"
+              >
+                Forward
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -588,18 +599,7 @@ export default function Home() {
         {/* Results - keep mounted once visited */}
         <div style={{ display: currentStep === 'results' ? 'block' : 'none' }}>
           {visitedSteps.has('results') && analysisReport && (
-            <div className="space-y-8">
-              <Analytics report={analysisReport} />
-              <div className="flex justify-end">
-                <button
-                  onClick={() => navigateToStep('insights', true)}
-                  className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium flex items-center gap-2"
-                >
-                  <MessageCircle className="w-5 h-5" />
-                  Continue to Insights &amp; Export
-                </button>
-              </div>
-            </div>
+            <Analytics report={analysisReport} />
           )}
         </div>
 

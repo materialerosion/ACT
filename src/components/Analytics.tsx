@@ -90,6 +90,9 @@ export default function Analytics({ report }: AnalyticsProps) {
             questions={enabledQuestions}
           />
 
+          {/* Key Insights */}
+          <InsightsPanel insights={summary.insights} />
+
           {/* Per-Question Summary Cards */}
           <div className="space-y-6">
             <h3 className="text-xl font-bold text-gray-800">Question-by-Question Analysis</h3>
@@ -105,9 +108,6 @@ export default function Analytics({ report }: AnalyticsProps) {
           </div>
         </>
       )}
-
-      {/* Key Insights */}
-      <InsightsPanel insights={summary.insights} />
     </div>
   );
 }
