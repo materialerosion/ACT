@@ -1,18 +1,21 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { DemographicInput, ConsumerProfile, Concept, AnalysisReport, PreferenceAnalysis, Question } from '@/types';
 import DemographicForm from '@/components/DemographicForm';
 import ParticipantReview from '@/components/ParticipantReview';
 import DesignSurvey from '@/components/DesignSurvey';
 import Analytics from '@/components/Analytics';
 import ReportDownload from '@/components/ReportDownload';
+import PersonaChat from '@/components/PersonaChat';
 import LoadingBar from '@/components/LoadingBar';
-import { Brain, Users, Target, BarChart3, Download, LogIn, LogOut, HelpCircle } from 'lucide-react';
+import { Brain, Users, Target, BarChart3, MessageCircle, LogIn, LogOut, HelpCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useAuth } from '../contexts/AuthContext';
 
-type Step = 'login' | 'demographics' | 'review' | 'design' | 'analysis' | 'results';
+type Step = 'login' | 'demographics' | 'review' | 'design' | 'analysis' | 'results' | 'insights';
+
+const STEPS_ORDER: Step[] = ['login', 'demographics', 'review', 'design', 'analysis', 'results', 'insights'];
 
 // Configuration - easily adjustable timeout settings
 const ANALYSIS_TIMEOUT_SECONDS = 600; // 10 minutes - adjust this value as needed
@@ -31,13 +34,95 @@ export default function Home() {
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingMessage, setLoadingMessage] = useState('');
 
+  // Navigation state: track visited steps and history for back/forward
+  const [visitedSteps, setVisitedSteps] = useState<Set<Step>>(new Set(['login']));
+  const [stepHistory, setStepHistory] = useState<Step[]>(['login']);
+  const [historyIndex, setHistoryIndex] = useState(0);
+
+  // Ref to track the highest step reached (for progress indicator)
+  const highestStepRef = useRef(0);
+
+  // Navigate to a step. isNewForwardAction=true means a new progression (truncates forward history).
+  // isNewForwardAction=false means navigating within existing history (back/forward/click).
+  const navigateToStep = useCallback((step: Step, isNewForwardAction = true) => {
+    if (isNewForwardAction) {
+      // Truncate any forward history and push new step
+      setStepHistory(prev => {
+        const newHistory = [...prev.slice(0, historyIndex + 1), step];
+        setHistoryIndex(newHistory.length - 1);
+        return newHistory;
+      });
+    }
+    setVisitedSteps(prev => new Set([...prev, step]));
+    setCurrentStep(step);
+
+    // Track highest step reached
+    const stepIdx = STEPS_ORDER.indexOf(step);
+    if (stepIdx > highestStepRef.current) {
+      highestStepRef.current = stepIdx;
+    }
+  }, [historyIndex]);
+
+  const canGoBack = useCallback(() => {
+    return historyIndex > 0 && currentStep !== 'login' && !isLoading;
+  }, [historyIndex, currentStep, isLoading]);
+
+  const canGoForward = useCallback(() => {
+    return historyIndex < stepHistory.length - 1 && !isLoading;
+  }, [historyIndex, stepHistory.length, isLoading]);
+
+  const goBack = useCallback(() => {
+    if (!canGoBack()) return;
+    const newIndex = historyIndex - 1;
+    setHistoryIndex(newIndex);
+    setCurrentStep(stepHistory[newIndex]);
+  }, [canGoBack, historyIndex, stepHistory]);
+
+  const goForward = useCallback(() => {
+    if (!canGoForward()) return;
+    const newIndex = historyIndex + 1;
+    setHistoryIndex(newIndex);
+    setCurrentStep(stepHistory[newIndex]);
+  }, [canGoForward, historyIndex, stepHistory]);
+
+  // Navigate to a specific step by clicking the progress indicator
+  const navigateToStepDirect = useCallback((targetStep: Step) => {
+    if (isLoading) return;
+    if (targetStep === currentStep) return;
+
+    const targetIdx = STEPS_ORDER.indexOf(targetStep);
+    const currentIdx = STEPS_ORDER.indexOf(currentStep);
+
+    // Only allow navigating to visited steps (not future unvisited ones)
+    if (!visitedSteps.has(targetStep)) return;
+    // Don't allow navigating to the transient 'analysis' step
+    if (targetStep === 'analysis') return;
+
+    // Check if this step exists in forward history
+    const historyTargetIdx = stepHistory.indexOf(targetStep);
+    if (historyTargetIdx !== -1 && historyTargetIdx !== historyIndex) {
+      // Navigate within history
+      setHistoryIndex(historyTargetIdx);
+      setCurrentStep(targetStep);
+    } else {
+      // Push as new navigation
+      navigateToStep(targetStep, true);
+    }
+  }, [isLoading, currentStep, visitedSteps, stepHistory, historyIndex, navigateToStep]);
+
   useEffect(() => {
     if (isAuthenticated) {
-      setCurrentStep('demographics');
+      if (currentStep === 'login') {
+        navigateToStep('demographics', true);
+      }
     } else {
       setCurrentStep('login');
+      setVisitedSteps(new Set(['login']));
+      setStepHistory(['login']);
+      setHistoryIndex(0);
+      highestStepRef.current = 0;
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   const pollJobStatus = async (jobId: string): Promise<ConsumerProfile[]> => {
@@ -80,6 +165,20 @@ export default function Home() {
     setLoadingProgress(0);
     setLoadingMessage('Recruiting Consumer Profiles');
     setDemographics(demographicData);
+
+    // Clear downstream state since we're re-generating profiles
+    setConcepts([]);
+    setQuestions([]);
+    setAnalysisReport(null);
+    // Remove downstream steps from visited so they remount fresh
+    setVisitedSteps(prev => {
+      const next = new Set(prev);
+      next.delete('design');
+      next.delete('analysis');
+      next.delete('results');
+      next.delete('insights');
+      return next;
+    });
 
     try {
       console.log('🚀 [DEBUG] Sending request to /api/profiles/generate', {
@@ -131,7 +230,7 @@ export default function Home() {
       
       // Small delay to show completion
       setTimeout(() => {
-        setCurrentStep('review');
+        navigateToStep('review', true);
       }, 500);
     } catch (error) {
       console.error('Error recruiting profiles:', error);
@@ -186,7 +285,17 @@ export default function Home() {
     setLoadingMessage('Analyzing Consumer Preferences');
     setConcepts(conceptsData);
     setQuestions(questionsData);
-    setCurrentStep('analysis');
+
+    // Clear downstream results since we're re-analyzing
+    setAnalysisReport(null);
+    setVisitedSteps(prev => {
+      const next = new Set(prev);
+      next.delete('results');
+      next.delete('insights');
+      return next;
+    });
+
+    navigateToStep('analysis', true);
 
     try {
       console.log('🚀 [DEBUG] Sending request to /api/analyze');
@@ -247,7 +356,7 @@ export default function Home() {
       setAnalysisReport(report);
       
       setTimeout(() => {
-        setCurrentStep('results');
+        navigateToStep('results', true);
       }, 500);
     } catch (error) {
       console.error('Error analyzing preferences:', error);
@@ -257,7 +366,10 @@ export default function Home() {
       } else {
         alert('Failed to analyze consumer preferences. Please try again.');
       }
-      setCurrentStep('design');
+      // Go back to design step on error
+      navigateToStep('design', false);
+      // Remove analysis from history since it failed
+      setStepHistory(prev => prev.filter(s => s !== 'analysis'));
     } finally {
       setTimeout(() => {
         setIsLoading(false);
@@ -272,16 +384,22 @@ export default function Home() {
   };
 
   const handleReviewContinue = () => {
-    setCurrentStep('design');
+    navigateToStep('design', true);
   };
 
   const resetAnalysis = () => {
-    setCurrentStep('demographics');
     setDemographics(null);
     setProfiles([]);
     setConcepts([]);
     setQuestions([]);
     setAnalysisReport(null);
+    // Reset navigation state — go to demographics fresh
+    const initialSteps: Step[] = ['login', 'demographics'];
+    setVisitedSteps(new Set(initialSteps));
+    setStepHistory(initialSteps);
+    setHistoryIndex(1);
+    setCurrentStep('demographics');
+    highestStepRef.current = 1;
   };
 
   const stepIcons = {
@@ -291,6 +409,7 @@ export default function Home() {
     design: Target,
     analysis: Brain,
     results: BarChart3,
+    insights: MessageCircle,
   };
 
   const stepTitles = {
@@ -300,7 +419,11 @@ export default function Home() {
     design: 'Design Survey',
     analysis: 'Analyzing...',
     results: 'View Results',
+    insights: 'Insights & Export',
   };
+
+  // Determine the highest step index reached for progress indicator coloring
+  const currentStepIndex = STEPS_ORDER.indexOf(currentStep);
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -315,22 +438,24 @@ export default function Home() {
                 <p className="text-sm text-gray-600">AI-powered consumer recruitment and preference analysis</p>
               </div>
             </div>
-            {isAuthenticated && (
-              <button
-                onClick={() => logout()}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-              >
-                Logout
-              </button>
-            )}
-            {analysisReport && (
-              <button
-                onClick={resetAnalysis}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                New Analysis
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {analysisReport && (
+                <button
+                  onClick={resetAnalysis}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  New Analysis
+                </button>
+              )}
+              {isAuthenticated && (
+                <button
+                  onClick={() => logout()}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  Logout
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </header>
@@ -341,24 +466,32 @@ export default function Home() {
           {Object.entries(stepTitles).map(([step, title], index) => {
             const Icon = stepIcons[step as Step];
             const isActive = currentStep === step;
-            const isCompleted = Object.keys(stepTitles).indexOf(currentStep) > index;
+            const isCompleted = currentStepIndex > index;
+            const isVisited = visitedSteps.has(step as Step);
+            const isClickable = isVisited && !isActive && !isLoading && step !== 'analysis' && step !== 'login';
             
             return (
               <div key={step} className="flex items-center">
-                <div className={`flex items-center justify-center w-10 h-10 rounded-full border-2 ${
-                  isActive 
-                    ? 'border-blue-600 bg-blue-600 text-white' 
-                    : isCompleted 
-                      ? 'border-green-600 bg-green-600 text-white'
-                      : 'border-gray-300 bg-white text-gray-400'
-                }`}>
-                  <Icon className="w-5 h-5" />
+                <div
+                  className={`flex items-center ${isClickable ? 'cursor-pointer group' : ''}`}
+                  onClick={() => isClickable ? navigateToStepDirect(step as Step) : null}
+                  title={isClickable ? `Go to ${title}` : undefined}
+                >
+                  <div className={`flex items-center justify-center w-10 h-10 rounded-full border-2 transition-all ${
+                    isActive 
+                      ? 'border-blue-600 bg-blue-600 text-white' 
+                      : isCompleted 
+                        ? 'border-green-600 bg-green-600 text-white'
+                        : 'border-gray-300 bg-white text-gray-400'
+                  } ${isClickable ? 'group-hover:ring-2 group-hover:ring-blue-300 group-hover:ring-offset-1' : ''}`}>
+                    <Icon className="w-5 h-5" />
+                  </div>
+                  <span className={`ml-2 text-sm font-medium ${
+                    isActive ? 'text-blue-600' : isCompleted ? 'text-green-600' : 'text-gray-400'
+                  } ${isClickable ? 'group-hover:underline' : ''}`}>
+                    {title}
+                  </span>
                 </div>
-                <span className={`ml-2 text-sm font-medium ${
-                  isActive ? 'text-blue-600' : isCompleted ? 'text-green-600' : 'text-gray-400'
-                }`}>
-                  {title}
-                </span>
                 {index < Object.keys(stepTitles).length - 1 && (
                   <div className={`ml-4 w-8 h-0.5 ${
                     isCompleted ? 'bg-green-600' : 'bg-gray-300'
@@ -370,9 +503,34 @@ export default function Home() {
         </div>
       </div>
 
+      {/* Back/Forward Navigation */}
+      {currentStep !== 'login' && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-4">
+          <div className="flex justify-between items-center">
+            <button
+              onClick={goBack}
+              disabled={!canGoBack()}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white transition-colors flex items-center gap-2 shadow-sm"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Back
+            </button>
+            <button
+              onClick={goForward}
+              disabled={!canGoForward()}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white transition-colors flex items-center gap-2 shadow-sm"
+            >
+              Forward
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
 
+        {/* Login - always conditional (no state to preserve) */}
         {currentStep === 'login' && (
             <div className="flex flex-col items-center justify-center py-20">
                 {inProgress !== InteractionStatus.None ? (
@@ -385,28 +543,38 @@ export default function Home() {
             </div>
         )}
 
-        {currentStep === 'demographics' && (
-          <DemographicForm 
-            onSubmit={handleDemographicsSubmit} 
-            isLoading={isLoading}
-            loadingProgress={loadingProgress}
-            loadingMessage={loadingMessage}
-          />
-        )}
+        {/* Demographics - keep mounted once visited to preserve form state */}
+        <div style={{ display: currentStep === 'demographics' ? 'block' : 'none' }}>
+          {visitedSteps.has('demographics') && (
+            <DemographicForm 
+              onSubmit={handleDemographicsSubmit} 
+              isLoading={isLoading}
+              loadingProgress={loadingProgress}
+              loadingMessage={loadingMessage}
+            />
+          )}
+        </div>
 
-        {currentStep === 'review' && demographics && (
-          <ParticipantReview 
-            profiles={profiles}
-            demographics={demographics}
-            onProfilesUpdate={handleProfilesUpdate}
-            onContinue={handleReviewContinue}
-          />
-        )}
+        {/* Review - keep mounted once visited to preserve any edits */}
+        <div style={{ display: currentStep === 'review' ? 'block' : 'none' }}>
+          {visitedSteps.has('review') && demographics && (
+            <ParticipantReview 
+              profiles={profiles}
+              demographics={demographics}
+              onProfilesUpdate={handleProfilesUpdate}
+              onContinue={handleReviewContinue}
+            />
+          )}
+        </div>
 
-        {currentStep === 'design' && (
-          <DesignSurvey onSubmit={handleDesignSurveySubmit} isLoading={isLoading} />
-        )}
+        {/* Design Survey - keep mounted once visited to preserve concepts/questions */}
+        <div style={{ display: currentStep === 'design' ? 'block' : 'none' }}>
+          {visitedSteps.has('design') && (
+            <DesignSurvey onSubmit={handleDesignSurveySubmit} isLoading={isLoading} />
+          )}
+        </div>
 
+        {/* Analysis - transient loading step, always conditional */}
         {currentStep === 'analysis' && (
           <div className="flex flex-col items-center justify-center py-20">
             <LoadingBar 
@@ -417,12 +585,33 @@ export default function Home() {
           </div>
         )}
 
-        {currentStep === 'results' && analysisReport && (
-          <div className="space-y-8">
-            <Analytics report={analysisReport} />
-            <ReportDownload report={analysisReport} />
-          </div>
-        )}
+        {/* Results - keep mounted once visited */}
+        <div style={{ display: currentStep === 'results' ? 'block' : 'none' }}>
+          {visitedSteps.has('results') && analysisReport && (
+            <div className="space-y-8">
+              <Analytics report={analysisReport} />
+              <div className="flex justify-end">
+                <button
+                  onClick={() => navigateToStep('insights', true)}
+                  className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium flex items-center gap-2"
+                >
+                  <MessageCircle className="w-5 h-5" />
+                  Continue to Insights &amp; Export
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Insights - chat with personas and download reports */}
+        <div style={{ display: currentStep === 'insights' ? 'block' : 'none' }}>
+          {visitedSteps.has('insights') && analysisReport && (
+            <div className="space-y-8">
+              <PersonaChat report={analysisReport} />
+              <ReportDownload report={analysisReport} />
+            </div>
+          )}
+        </div>
       </main>
 
       {/* Footer */}

@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import type { ChatCompletionContentPart } from 'openai/resources/chat/completions';
-import { ConsumerProfile, DemographicInput, PreferenceAnalysis, Concept, Question } from '@/types';
+import { ConsumerProfile, DemographicInput, PreferenceAnalysis, Concept, Question, SurveyContext } from '@/types';
 import getConfig from 'next/config';
 
 const { serverRuntimeConfig } = getConfig();
@@ -436,6 +436,116 @@ Return as a JSON array of insight strings:
     } catch (error) {
       console.error('Error generating insights:', error);
       return ['Error occurred while generating insights from the analysis.'];
+    }
+  }
+
+  /**
+   * Build a system prompt that embodies a specific consumer persona,
+   * including their full profile and survey responses as invisible context.
+   */
+  static buildPersonaSystemPrompt(
+    profile: ConsumerProfile,
+    surveyContext: SurveyContext
+  ): string {
+    const { concepts, questions, analyses } = surveyContext;
+
+    // Build survey responses section per concept
+    const surveyResponsesSection = concepts
+      .map(concept => {
+        const conceptAnalyses = analyses.filter(
+          a => a.profileId === profile.id && a.conceptId === concept.id
+        );
+        if (conceptAnalyses.length === 0) return '';
+
+        const analysis = conceptAnalyses[0];
+        const responsesText = questions
+          .filter(q => q.enabled)
+          .map(q => {
+            const response = analysis.questionResponses?.[q.id];
+            if (response === undefined) return null;
+            return `  - ${q.text}: ${response}`;
+          })
+          .filter(Boolean)
+          .join('\n');
+
+        return `CONCEPT: "${concept.title}"
+Description: "${concept.description}"
+Your survey responses:
+${responsesText}`;
+      })
+      .filter(s => s.length > 0)
+      .join('\n\n');
+
+    return `You are ${profile.name}, a ${profile.age}-year-old ${profile.gender} from ${profile.location}.
+
+YOUR BACKGROUND:
+- Income: ${profile.income}
+- Education: ${profile.education}
+- Lifestyle: ${profile.lifestyle}
+- Interests: ${profile.interests.join(', ')}
+- Shopping behavior: ${profile.shoppingBehavior}
+- Tech savviness: ${profile.techSavviness}
+- Environmental awareness: ${profile.environmentalAwareness}
+- Brand loyalty: ${profile.brandLoyalty}
+- Price sensitivity: ${profile.pricesensitivity}
+
+YOU RECENTLY PARTICIPATED IN A CONSUMER SURVEY. Here is what you evaluated:
+
+${surveyResponsesSection}
+
+INSTRUCTIONS:
+- Respond naturally and conversationally as ${profile.name}.
+- Stay in character at all times. Your opinions, preferences, and communication style should reflect your demographic profile.
+- When relevant, reference your survey responses and explain your reasoning.
+- Be authentic to your background — consider your income, education, lifestyle, and values when forming opinions.
+- Keep responses concise (2-4 sentences) unless asked to elaborate.
+- Do NOT break character or mention that you are an AI.`;
+  }
+
+  /**
+   * Chat with a specific consumer persona, using the survey context as grounding.
+   */
+  static async chatWithPersona(
+    message: string,
+    profile: ConsumerProfile,
+    surveyContext: SurveyContext,
+    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>
+  ): Promise<string> {
+    console.log(`💬 [DEBUG] Chat with persona: ${profile.name} (${profile.id})`);
+
+    const systemPrompt = this.buildPersonaSystemPrompt(profile, surveyContext);
+
+    // Build messages array: system + conversation history + new message
+    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+      { role: 'system', content: systemPrompt },
+    ];
+
+    // Add conversation history (limit to last 20 messages to manage token usage)
+    const recentHistory = conversationHistory.slice(-20);
+    for (const msg of recentHistory) {
+      messages.push({ role: msg.role, content: msg.content });
+    }
+
+    // Add the new user message
+    messages.push({ role: 'user', content: message });
+
+    try {
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages,
+        temperature: 0.7,
+        max_tokens: 500,
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        throw new Error('No response from AI');
+      }
+
+      return content.trim();
+    } catch (error) {
+      console.error(`Error chatting with persona ${profile.name}:`, error);
+      throw error;
     }
   }
 }

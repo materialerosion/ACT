@@ -65,3 +65,28 @@ export interface Question {
   type: ResponseType;
   enabled: boolean;
 }
+
+// Chat types
+export type ChatMode = 'follow_up' | 'focus_group';
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'persona';
+  personaId?: string;
+  personaName?: string;
+  content: string;
+  timestamp: Date;
+}
+
+export interface SurveyContext {
+  concepts: Concept[];
+  questions: Question[];
+  analyses: PreferenceAnalysis[];
+}
+
+export interface ChatSession {
+  mode: ChatMode;
+  selectedPersonas: ConsumerProfile[];
+  messages: ChatMessage[];
+  surveyContext: SurveyContext;
+}
