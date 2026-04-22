@@ -1,19 +1,21 @@
 'use client';
 
 import React, { useState } from 'react';
-import { DemographicInput } from '@/types';
-import { Users, MapPin, DollarSign, GraduationCap, Calendar, Target, Upload, FileText, ChevronDown, ChevronUp } from 'lucide-react';
+import { DemographicInput, ConsumerProfile } from '@/types';
+import { Users, MapPin, DollarSign, GraduationCap, Calendar, Target, Upload, FileText, ChevronDown, ChevronUp, UserCheck, ArrowRight } from 'lucide-react';
 import LoadingBar from './LoadingBar';
 import DualRangeSlider from './DualRangeSlider';
+import { PRESET_PERSONA_SETS, PresetPersonaSet } from '@/data/presetPersonas';
 
 interface DemographicFormProps {
   onSubmit: (demographics: DemographicInput) => void;
+  onUsePresetPersonas?: (profiles: ConsumerProfile[]) => void;
   isLoading?: boolean;
   loadingProgress?: number;
   loadingMessage?: string;
 }
 
-export default function DemographicForm({ onSubmit, isLoading, loadingProgress = 0, loadingMessage }: DemographicFormProps) {
+export default function DemographicForm({ onSubmit, onUsePresetPersonas, isLoading, loadingProgress = 0, loadingMessage }: DemographicFormProps) {
   const genderOptions = [
     'Male', 'Female', 'Non-binary', 'Prefer not to say'
   ];
@@ -43,6 +45,8 @@ export default function DemographicForm({ onSubmit, isLoading, loadingProgress =
   });
 
   const [showAdditionalContext, setShowAdditionalContext] = useState(false);
+  const [selectedPresets, setSelectedPresets] = useState<Set<string>>(new Set());
+  const [showPresetDetails, setShowPresetDetails] = useState<string | null>(null);
   const [ageMinInput, setAgeMinInput] = useState('17');
   const [ageMaxInput, setAgeMaxInput] = useState('65');
   const [incomeMinInput, setIncomeMinInput] = useState('24000');
@@ -133,6 +137,30 @@ export default function DemographicForm({ onSubmit, isLoading, loadingProgress =
       return `$${(value / 1000).toFixed(0)}k`;
     }
     return `$${value}`;
+  };
+
+  const togglePresetSelection = (presetId: string) => {
+    setSelectedPresets(prev => {
+      const next = new Set(prev);
+      if (next.has(presetId)) {
+        next.delete(presetId);
+      } else {
+        next.add(presetId);
+      }
+      return next;
+    });
+  };
+
+  const getSelectedPresetProfiles = (): ConsumerProfile[] => {
+    return PRESET_PERSONA_SETS
+      .filter(set => selectedPresets.has(set.id))
+      .flatMap(set => set.profiles);
+  };
+
+  const handleUsePresets = () => {
+    if (onUsePresetPersonas && selectedPresets.size > 0) {
+      onUsePresetPersonas(getSelectedPresetProfiles());
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -311,9 +339,9 @@ export default function DemographicForm({ onSubmit, isLoading, loadingProgress =
           <div className="flex items-center space-x-4">
             <input
               type="range"
-              min="20"
+              min="1"
               max="200"
-              step="20"
+              step="1"
               value={demographics.consumerCount}
               onChange={(e) => handleCountChange(parseInt(e.target.value))}
               className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
@@ -321,9 +349,9 @@ export default function DemographicForm({ onSubmit, isLoading, loadingProgress =
             <div className="flex items-center space-x-2">
               <input
                 type="number"
-                min="20"
+                min="1"
                 max="200"
-                step="20"
+                step="1"
                 value={demographics.consumerCount}
                 onChange={(e) => handleCountChange(parseInt(e.target.value))}
                 className="w-20 p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-center text-gray-900"
@@ -472,11 +500,102 @@ export default function DemographicForm({ onSubmit, isLoading, loadingProgress =
           )}
         </div>
 
+        {/* Pre-Generated Persona Sets */}
+        {onUsePresetPersonas && (
+          <div className="bg-green-50 p-4 rounded-lg border-2 border-green-200">
+            <div className="flex items-center mb-3">
+              <UserCheck className="w-5 h-5 text-green-600 mr-2" />
+              <h3 className="text-lg font-semibold text-gray-800">Or Use Pre-Generated Personas</h3>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              Skip AI generation and proceed with curated OAD brand consumer personas. Select one or more sets below.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+              {PRESET_PERSONA_SETS.map((preset) => (
+                <div
+                  key={preset.id}
+                  className={`relative rounded-lg border-2 p-4 cursor-pointer transition-all ${
+                    selectedPresets.has(preset.id)
+                      ? 'border-green-500 bg-green-100 shadow-md'
+                      : 'border-gray-200 bg-white hover:border-green-300 hover:shadow-sm'
+                  }`}
+                  onClick={() => togglePresetSelection(preset.id)}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center">
+                      <span className="text-2xl mr-3">{preset.icon}</span>
+                      <div>
+                        <h4 className="font-semibold text-gray-800">{preset.name}</h4>
+                        <p className="text-xs text-gray-500">{preset.profiles.length} personas</p>
+                      </div>
+                    </div>
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                      selectedPresets.has(preset.id)
+                        ? 'border-green-500 bg-green-500'
+                        : 'border-gray-300'
+                    }`}>
+                      {selectedPresets.has(preset.id) && (
+                        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-600 mt-2">{preset.description}</p>
+
+                  {/* Expand/collapse persona names */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowPresetDetails(showPresetDetails === preset.id ? null : preset.id);
+                    }}
+                    className="mt-2 text-xs text-green-700 hover:text-green-900 underline"
+                  >
+                    {showPresetDetails === preset.id ? 'Hide details' : 'Show personas'}
+                  </button>
+
+                  {showPresetDetails === preset.id && (
+                    <div className="mt-2 space-y-1">
+                      {preset.profiles.map((p) => (
+                        <div key={p.id} className="text-xs text-gray-600 flex items-center">
+                          <span className="w-1.5 h-1.5 bg-green-400 rounded-full mr-2 flex-shrink-0" />
+                          <span className="font-medium">{p.name}</span>
+                          <span className="text-gray-400 ml-1">— {p.age}y, {p.gender}, {p.location}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {selectedPresets.size > 0 && (
+              <div className="flex items-center justify-between bg-green-100 rounded-lg p-3 border border-green-300">
+                <span className="text-sm text-green-800">
+                  <strong>{getSelectedPresetProfiles().length}</strong> persona{getSelectedPresetProfiles().length !== 1 ? 's' : ''} selected from{' '}
+                  <strong>{selectedPresets.size}</strong> set{selectedPresets.size !== 1 ? 's' : ''}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleUsePresets}
+                  disabled={isLoading}
+                  className="flex items-center px-4 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 disabled:bg-green-400 transition-colors"
+                >
+                  Use Selected Personas
+                  <ArrowRight className="w-4 h-4 ml-2" />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Loading Bar */}
         {isLoading && (
           <div className="pt-6">
-            <LoadingBar 
-              progress={loadingProgress} 
+            <LoadingBar
+              progress={loadingProgress}
               message={loadingMessage || "Recruiting Consumers"}
               subMessage={`Generating ${demographics.consumerCount} diverse consumer profiles...`}
             />

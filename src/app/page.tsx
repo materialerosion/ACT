@@ -383,8 +383,58 @@ export default function Home() {
     setProfiles(updatedProfiles);
   };
 
+  const handleUsePresetPersonas = (presetProfiles: ConsumerProfile[]) => {
+    // Set profiles directly from presets — skip AI generation
+    setProfiles(presetProfiles);
+
+    // Set a minimal demographics object so the review step renders
+    // (ParticipantReview requires demographics to be non-null)
+    if (!demographics) {
+      setDemographics({
+        ageRanges: [],
+        genders: [],
+        locations: [],
+        incomeRanges: [],
+        educationLevels: [],
+        consumerCount: presetProfiles.length,
+      });
+    }
+
+    // Clear downstream state since we're starting fresh with preset profiles
+    setConcepts([]);
+    setQuestions([]);
+    setAnalysisReport(null);
+    setVisitedSteps(prev => {
+      const next = new Set(prev);
+      next.delete('design');
+      next.delete('analysis');
+      next.delete('results');
+      next.delete('insights');
+      return next;
+    });
+
+    // Navigate to review step
+    navigateToStep('review', true);
+  };
+
   const handleReviewContinue = () => {
     navigateToStep('design', true);
+  };
+
+  const handleSkipToInterviews = () => {
+    // Create a minimal AnalysisReport so PersonaChat can work with profiles
+    const minimalReport: AnalysisReport = {
+      id: uuidv4(),
+      timestamp: new Date(),
+      demographics: demographics!,
+      concepts: [],
+      profiles,
+      analyses: [],
+      summary: { insights: [] },
+      questions: [],
+    };
+    setAnalysisReport(minimalReport);
+    navigateToStep('insights', true);
   };
 
   const resetAnalysis = () => {
@@ -557,8 +607,9 @@ export default function Home() {
         {/* Demographics - keep mounted once visited to preserve form state */}
         <div style={{ display: currentStep === 'demographics' ? 'block' : 'none' }}>
           {visitedSteps.has('demographics') && (
-            <DemographicForm 
-              onSubmit={handleDemographicsSubmit} 
+            <DemographicForm
+              onSubmit={handleDemographicsSubmit}
+              onUsePresetPersonas={handleUsePresetPersonas}
               isLoading={isLoading}
               loadingProgress={loadingProgress}
               loadingMessage={loadingMessage}
@@ -569,11 +620,12 @@ export default function Home() {
         {/* Review - keep mounted once visited to preserve any edits */}
         <div style={{ display: currentStep === 'review' ? 'block' : 'none' }}>
           {visitedSteps.has('review') && demographics && (
-            <ParticipantReview 
+            <ParticipantReview
               profiles={profiles}
               demographics={demographics}
               onProfilesUpdate={handleProfilesUpdate}
               onContinue={handleReviewContinue}
+              onSkipToInterviews={handleSkipToInterviews}
             />
           )}
         </div>
@@ -608,7 +660,9 @@ export default function Home() {
           {visitedSteps.has('insights') && analysisReport && (
             <div className="space-y-8">
               <PersonaChat report={analysisReport} />
-              <ReportDownload report={analysisReport} />
+              {analysisReport.concepts.length > 0 && (
+                <ReportDownload report={analysisReport} />
+              )}
             </div>
           )}
         </div>

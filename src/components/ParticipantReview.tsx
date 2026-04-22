@@ -2,17 +2,23 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { ConsumerProfile, DemographicInput } from '@/types';
-import { 
-  Users, 
-  Edit3, 
-  UserX, 
-  UserPlus, 
-  BarChart3, 
-  ChevronDown, 
+import {
+  Users,
+  Edit3,
+  UserX,
+  UserPlus,
+  BarChart3,
+  ChevronDown,
   ChevronUp,
   Save,
   X,
-  Check
+  Check,
+  MessageCircle,
+  FileJson,
+  Upload,
+  Copy,
+  AlertCircle,
+  CheckCircle2
 } from 'lucide-react';
 import {
   Chart as ChartJS,
@@ -36,18 +42,69 @@ ChartJS.register(
   ArcElement
 );
 
+const JSON_TEMPLATE = `[
+  {
+    "name": "Jane Smith",
+    "age": 32,
+    "gender": "Female",
+    "location": "Suburban",
+    "income": "$50,000 - $75,000",
+    "education": "Bachelor's degree",
+    "lifestyle": "Health-conscious professional who values work-life balance and sustainable living",
+    "interests": ["fitness", "cooking", "travel"],
+    "shoppingBehavior": "Researches extensively before purchasing",
+    "techSavviness": "High",
+    "environmentalAwareness": "High",
+    "brandLoyalty": "Medium",
+    "pricesensitivity": "Medium"
+  },
+  {
+    "name": "Marcus Johnson",
+    "age": 45,
+    "gender": "Male",
+    "location": "Urban",
+    "income": "$100,000 - $150,000",
+    "education": "Master's degree",
+    "lifestyle": "Tech-forward executive who prioritizes convenience and premium experiences",
+    "interests": ["technology", "golf", "investing"],
+    "shoppingBehavior": "Values convenience and quick purchases",
+    "techSavviness": "Very High",
+    "environmentalAwareness": "Low",
+    "brandLoyalty": "High",
+    "pricesensitivity": "Low"
+  }
+]`;
+
+const JSON_FIELD_REFERENCE: { field: string; required: boolean; description: string; values: string }[] = [
+  { field: 'name', required: true, description: 'Full name of the participant', values: 'Any text' },
+  { field: 'lifestyle', required: true, description: 'Description of their lifestyle, values, and characteristics', values: 'Any text' },
+  { field: 'age', required: false, description: 'Age in years', values: 'Number (default: 25)' },
+  { field: 'gender', required: false, description: 'Gender identity', values: '"Male", "Female", "Non-binary", "Prefer not to say"' },
+  { field: 'location', required: false, description: 'Type of area they live in', values: '"Urban", "Suburban", "Rural", "Metropolitan", "Small Town"' },
+  { field: 'income', required: false, description: 'Annual household income range', values: '"Under $25,000", "$25,000 - $50,000", "$50,000 - $75,000", "$75,000 - $100,000", "$100,000 - $150,000", "Over $150,000"' },
+  { field: 'education', required: false, description: 'Highest education level', values: '"High school diploma", "Some college", "Associate degree", "Bachelor\'s degree", "Master\'s degree", "Doctoral degree"' },
+  { field: 'interests', required: false, description: 'List of hobbies and interests', values: 'Array of strings, e.g. ["fitness", "cooking"]' },
+  { field: 'shoppingBehavior', required: false, description: 'How they approach purchasing decisions', values: '"Researches extensively before purchasing", "Impulse buyer influenced by promotions", "Brand loyal and prefers familiar products", "Price-sensitive and comparison shops", "Values convenience and quick purchases"' },
+  { field: 'techSavviness', required: false, description: 'Comfort level with technology', values: '"Low", "Medium", "High", "Very High"' },
+  { field: 'environmentalAwareness', required: false, description: 'Level of environmental consciousness', values: '"Low", "Medium", "High", "Very High"' },
+  { field: 'brandLoyalty', required: false, description: 'Tendency to stick with known brands', values: '"Low", "Medium", "High", "Very High"' },
+  { field: 'pricesensitivity', required: false, description: 'How much price influences decisions', values: '"Low", "Medium", "High", "Very High"' },
+];
+
 interface ParticipantReviewProps {
   profiles: ConsumerProfile[];
   demographics: DemographicInput;
   onProfilesUpdate: (profiles: ConsumerProfile[]) => void;
   onContinue: () => void;
+  onSkipToInterviews?: () => void;
 }
 
-export default function ParticipantReview({ 
-  profiles, 
-  demographics, 
-  onProfilesUpdate, 
-  onContinue 
+export default function ParticipantReview({
+  profiles,
+  demographics,
+  onProfilesUpdate,
+  onContinue,
+  onSkipToInterviews
 }: ParticipantReviewProps) {
   const [filteredProfiles, setFilteredProfiles] = useState<ConsumerProfile[]>(profiles);
   const [excludedProfiles, setExcludedProfiles] = useState<Set<string>>(new Set());
@@ -58,6 +115,7 @@ export default function ParticipantReview({
   const [genderFilter, setGenderFilter] = useState<string>('all');
   const [locationFilter, setLocationFilter] = useState<string>('all');
   const [showManualRecruit, setShowManualRecruit] = useState(false);
+  const [recruitTab, setRecruitTab] = useState<'form' | 'json'>('form');
   const [manualProfile, setManualProfile] = useState<Partial<ConsumerProfile>>({
     name: '',
     age: 25,
@@ -74,7 +132,14 @@ export default function ParticipantReview({
     pricesensitivity: 'Medium'
   });
 
+  // JSON import state
+  const [jsonText, setJsonText] = useState('');
+  const [jsonError, setJsonError] = useState<string | null>(null);
+  const [jsonSuccess, setJsonSuccess] = useState<string | null>(null);
+  const [templateCopied, setTemplateCopied] = useState(false);
+
   const manualRecruitRef = useRef<HTMLDivElement>(null);
+  const jsonFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let filtered = profiles.filter(profile => !excludedProfiles.has(profile.id));
@@ -136,6 +201,12 @@ export default function ParticipantReview({
     onContinue();
   };
 
+  const handleSkipToInterviews = () => {
+    const finalProfiles = profiles.filter(profile => !excludedProfiles.has(profile.id));
+    onProfilesUpdate(finalProfiles);
+    onSkipToInterviews?.();
+  };
+
   const addManualProfile = () => {
     if (manualProfile.name && manualProfile.lifestyle) {
       const newProfile: ConsumerProfile = {
@@ -180,6 +251,10 @@ export default function ParticipantReview({
 
   const cancelManualRecruit = () => {
     setShowManualRecruit(false);
+    setRecruitTab('form');
+    setJsonText('');
+    setJsonError(null);
+    setJsonSuccess(null);
     setManualProfile({
       name: '',
       age: 25,
@@ -195,6 +270,127 @@ export default function ParticipantReview({
       brandLoyalty: 'Medium',
       pricesensitivity: 'Medium'
     });
+  };
+
+  // JSON Import handlers
+  const parseAndValidateJson = (text: string): ConsumerProfile[] | null => {
+    setJsonError(null);
+    setJsonSuccess(null);
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      setJsonError('Invalid JSON syntax. Please check your formatting and try again.');
+      return null;
+    }
+
+    // Wrap single object in array
+    const items = Array.isArray(parsed) ? parsed : [parsed];
+
+    if (items.length === 0) {
+      setJsonError('The JSON array is empty. Please provide at least one profile.');
+      return null;
+    }
+
+    const validProfiles: ConsumerProfile[] = [];
+    const errors: string[] = [];
+
+    items.forEach((item: Record<string, unknown>, index: number) => {
+      if (typeof item !== 'object' || item === null) {
+        errors.push(`Item ${index + 1}: Must be a JSON object.`);
+        return;
+      }
+
+      if (!item.name || typeof item.name !== 'string' || (item.name as string).trim() === '') {
+        errors.push(`Item ${index + 1}: Missing required field "name".`);
+        return;
+      }
+
+      if (!item.lifestyle || typeof item.lifestyle !== 'string' || (item.lifestyle as string).trim() === '') {
+        errors.push(`Item ${index + 1} ("${item.name}"): Missing required field "lifestyle".`);
+        return;
+      }
+
+      const profile: ConsumerProfile = {
+        id: `json-import-${Date.now()}-${index}`,
+        name: (item.name as string).trim(),
+        age: typeof item.age === 'number' ? item.age : 25,
+        gender: typeof item.gender === 'string' ? item.gender : 'Prefer not to say',
+        location: typeof item.location === 'string' ? item.location : 'Urban',
+        income: typeof item.income === 'string' ? item.income : '$50,000 - $75,000',
+        education: typeof item.education === 'string' ? item.education : "Bachelor's degree",
+        lifestyle: (item.lifestyle as string).trim(),
+        interests: Array.isArray(item.interests) ? item.interests.filter((i: unknown) => typeof i === 'string') : [],
+        shoppingBehavior: typeof item.shoppingBehavior === 'string' ? item.shoppingBehavior : 'Researches extensively before purchasing',
+        techSavviness: typeof item.techSavviness === 'string' ? item.techSavviness : 'Medium',
+        environmentalAwareness: typeof item.environmentalAwareness === 'string' ? item.environmentalAwareness : 'Medium',
+        brandLoyalty: typeof item.brandLoyalty === 'string' ? item.brandLoyalty : 'Medium',
+        pricesensitivity: typeof item.pricesensitivity === 'string' ? item.pricesensitivity : 'Medium',
+      };
+
+      validProfiles.push(profile);
+    });
+
+    if (errors.length > 0) {
+      setJsonError(`Validation errors:\n${errors.join('\n')}`);
+      return null;
+    }
+
+    return validProfiles;
+  };
+
+  const handleJsonImport = () => {
+    const importedProfiles = parseAndValidateJson(jsonText);
+    if (importedProfiles) {
+      const updatedProfiles = [...profiles, ...importedProfiles];
+      onProfilesUpdate(updatedProfiles);
+      setJsonSuccess(`Successfully imported ${importedProfiles.length} profile${importedProfiles.length !== 1 ? 's' : ''}.`);
+      setJsonText('');
+      // Auto-close after a short delay
+      setTimeout(() => {
+        setShowManualRecruit(false);
+        setRecruitTab('form');
+        setJsonSuccess(null);
+      }, 2000);
+    }
+  };
+
+  const handleJsonFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      setJsonText(text);
+      setJsonError(null);
+      setJsonSuccess(null);
+    } catch {
+      setJsonError('Failed to read the file. Please try again.');
+    }
+
+    // Reset file input so the same file can be re-selected
+    if (jsonFileInputRef.current) {
+      jsonFileInputRef.current.value = '';
+    }
+  };
+
+  const handleCopyTemplate = async () => {
+    try {
+      await navigator.clipboard.writeText(JSON_TEMPLATE);
+      setTemplateCopied(true);
+      setTimeout(() => setTemplateCopied(false), 2000);
+    } catch {
+      // Fallback: select the template text
+      const textarea = document.createElement('textarea');
+      textarea.value = JSON_TEMPLATE;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      setTemplateCopied(true);
+      setTimeout(() => setTemplateCopied(false), 2000);
+    }
   };
 
   // Prepare demographic charts data
@@ -299,6 +495,15 @@ export default function ParticipantReview({
             >
               Continue with {filteredProfiles.length} Participants
             </button>
+            {onSkipToInterviews && (
+              <button
+                onClick={handleSkipToInterviews}
+                className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center"
+              >
+                <MessageCircle className="w-4 h-4 mr-2" />
+                Skip to Interviews
+              </button>
+            )}
           </div>
         </div>
 
@@ -396,6 +601,34 @@ export default function ParticipantReview({
             </button>
           </div>
 
+          {/* Tab Toggle */}
+          <div className="flex border-b border-gray-200 mb-6">
+            <button
+              onClick={() => { setRecruitTab('form'); setJsonError(null); setJsonSuccess(null); }}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                recruitTab === 'form'
+                  ? 'border-green-600 text-green-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <UserPlus className="w-4 h-4 inline mr-1.5 -mt-0.5" />
+              Manual Form
+            </button>
+            <button
+              onClick={() => { setRecruitTab('json'); setJsonError(null); setJsonSuccess(null); }}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                recruitTab === 'json'
+                  ? 'border-green-600 text-green-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <FileJson className="w-4 h-4 inline mr-1.5 -mt-0.5" />
+              Import from JSON
+            </button>
+          </div>
+
+          {/* Manual Form Tab */}
+          {recruitTab === 'form' && (
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -580,6 +813,160 @@ export default function ParticipantReview({
               </button>
             </div>
           </div>
+          )}
+
+          {/* JSON Import Tab */}
+          {recruitTab === 'json' && (
+          <div className="space-y-5">
+            {/* JSON Template */}
+            <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-2 bg-gray-100 border-b border-gray-200">
+                <span className="text-sm font-medium text-gray-700 flex items-center">
+                  <FileJson className="w-4 h-4 mr-1.5 text-blue-600" />
+                  JSON Template
+                </span>
+                <button
+                  onClick={handleCopyTemplate}
+                  className="flex items-center px-3 py-1 text-xs font-medium bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors text-gray-700"
+                >
+                  {templateCopied ? (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-green-600" />
+                      <span className="text-green-600">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5 mr-1" />
+                      Copy Template
+                    </>
+                  )}
+                </button>
+              </div>
+              <pre className="p-4 text-xs text-gray-700 overflow-x-auto font-mono leading-relaxed">
+                {JSON_TEMPLATE}
+              </pre>
+              <div className="px-4 py-2 bg-gray-100 border-t border-gray-200">
+                <p className="text-xs text-gray-500">
+                  Only <strong>name</strong> and <strong>lifestyle</strong> are required. All other fields have defaults.
+                  You can provide a single object or an array of objects. The <code className="bg-gray-200 px-1 rounded">id</code> field is auto-generated.
+                </p>
+              </div>
+            </div>
+
+            {/* Field Reference Table */}
+            <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+              <div className="px-4 py-2 bg-gray-100 border-b border-gray-200">
+                <span className="text-sm font-medium text-gray-700">Field Reference</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-gray-100 border-b border-gray-200">
+                      <th className="px-3 py-2 text-left font-semibold text-gray-600">Field</th>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-600">Required</th>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-600">Description</th>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-600">Accepted Values</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {JSON_FIELD_REFERENCE.map((ref, idx) => (
+                      <tr key={ref.field} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                        <td className="px-3 py-1.5 font-mono text-blue-700">{ref.field}</td>
+                        <td className="px-3 py-1.5">
+                          {ref.required ? (
+                            <span className="text-red-600 font-semibold">Yes</span>
+                          ) : (
+                            <span className="text-gray-400">No</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-1.5 text-gray-700">{ref.description}</td>
+                        <td className="px-3 py-1.5 text-gray-600 font-mono" style={{ maxWidth: '300px', wordBreak: 'break-word' }}>{ref.values}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* File Upload */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Upload a .json file
+              </label>
+              <div className="flex items-center space-x-3">
+                <label className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 transition-colors">
+                  <Upload className="w-4 h-4 mr-2 text-green-600" />
+                  <span className="text-sm text-gray-700">Choose File</span>
+                  <input
+                    ref={jsonFileInputRef}
+                    type="file"
+                    accept=".json,application/json"
+                    onChange={handleJsonFileUpload}
+                    className="hidden"
+                  />
+                </label>
+                {jsonText && (
+                  <span className="text-sm text-gray-500">File loaded — review below</span>
+                )}
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div className="flex items-center">
+              <div className="flex-1 border-t border-gray-300" />
+              <span className="px-3 text-sm text-gray-400">or paste JSON below</span>
+              <div className="flex-1 border-t border-gray-300" />
+            </div>
+
+            {/* JSON Text Area */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Paste JSON
+              </label>
+              <textarea
+                value={jsonText}
+                onChange={(e) => { setJsonText(e.target.value); setJsonError(null); setJsonSuccess(null); }}
+                className="w-full p-3 border border-gray-300 rounded-md text-gray-900 focus:ring-2 focus:ring-green-500 font-mono text-sm"
+                rows={10}
+                placeholder={`Paste your JSON here...\n\nExample:\n[\n  {\n    "name": "Jane Smith",\n    "lifestyle": "Health-conscious professional",\n    "age": 32,\n    "gender": "Female"\n  }\n]`}
+              />
+            </div>
+
+            {/* Error Message */}
+            {jsonError && (
+              <div className="flex items-start p-3 bg-red-50 border border-red-200 rounded-lg">
+                <AlertCircle className="w-5 h-5 text-red-500 mr-2 flex-shrink-0 mt-0.5" />
+                <pre className="text-sm text-red-700 whitespace-pre-wrap font-sans">{jsonError}</pre>
+              </div>
+            )}
+
+            {/* Success Message */}
+            {jsonSuccess && (
+              <div className="flex items-center p-3 bg-green-50 border border-green-200 rounded-lg">
+                <CheckCircle2 className="w-5 h-5 text-green-500 mr-2 flex-shrink-0" />
+                <span className="text-sm text-green-700">{jsonSuccess}</span>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex justify-end space-x-3 pt-2">
+              <button
+                onClick={cancelManualRecruit}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleJsonImport}
+                disabled={!jsonText.trim()}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center"
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                Import Profiles
+              </button>
+            </div>
+          </div>
+          )}
         </div>
       )}
 
